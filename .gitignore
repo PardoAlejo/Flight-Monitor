@@ -1,0 +1,74 @@
+# ===========================================
+# ARCHIVOS SENSIBLES - NUNCA SUBIR A GITHUB
+# ===========================================
+
+# Credenciales y configuración personal
+.env
+.env.local
+.env.*.local
+
+# Base de datos con historial de precios
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuración de vuelos personal
+flights.yaml
+
+# Logs pueden contener información sensible
+*.log
+monitor.log
+
+# ===========================================
+# ARCHIVOS DE SISTEMA Y DESARROLLO
+# ===========================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# UV
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/

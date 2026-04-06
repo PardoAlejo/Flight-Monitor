@@ -1,0 +1,30 @@
+# ===========================================
+# CONFIGURACIÓN DE VUELOS A MONITOREAR
+# ===========================================
+# Copia este archivo a flights.yaml y ajusta:
+#   cp flights.yaml.example flights.yaml
+#
+# IMPORTANTE: Nunca subas flights.yaml a GitHub
+# ===========================================
+
+flights:
+  # Ejemplo 1: Vuelo ida y vuelta
+  - origin: BOG           # Código IATA origen
+    destination: MIA      # Código IATA destino
+    depart_date: "2025-12-01"
+    return_date: "2025-12-15"   # Omitir para solo ida
+    adults: 1
+    currency: USD
+
+  # Ejemplo 2: Solo ida
+  - origin: BOG
+    destination: MAD
+    depart_date: "2025-11-15"
+    adults: 2
+    currency: EUR
+
+# Códigos IATA comunes:
+# BOG = Bogotá       MDE = Medellín     CLO = Cali
+# MIA = Miami        JFK = New York     LAX = Los Angeles
+# MAD = Madrid       BCN = Barcelona    CDG = París
+# LIM = Lima         SCL = Santiago     GRU = São Paulo
