@@ -18,6 +18,10 @@ class FlightOffer:
     depart_date: str
     return_date: Optional[str] = None
     price_category: str = "other"  # "best" (LOW) or "other"
+    # Price insights from Google Flights
+    typical_price_low: Optional[float] = None   # Lower bound of typical range
+    typical_price_high: Optional[float] = None  # Upper bound of typical range
+    price_level: Optional[str] = None           # "low", "typical", or "high"
 
 
 @dataclass
@@ -38,6 +42,14 @@ class PriceStats:
     count_low: int  # Number of "best" category records
 
 
+@dataclass
+class FlightCheckResult:
+    """Result of a flight price check."""
+    offer: FlightOffer
+    discount_pct: float  # Percentage below typical_price_low
+    recommended: bool    # True if price is below typical_price_low
+
+
 class Notifier(ABC):
     """Abstract base class for notification plugins."""
 
@@ -45,7 +57,6 @@ class Notifier(ABC):
     def send(
         self,
         offer: FlightOffer,
-        stats: PriceStats,
         discount_pct: float,
     ) -> bool:
         """
@@ -53,8 +64,7 @@ class Notifier(ABC):
 
         Args:
             offer: The current flight offer details
-            stats: Historical price statistics
-            discount_pct: Percentage below average LOW price
+            discount_pct: Percentage below typical price range
 
         Returns:
             True if notification was sent successfully, False otherwise
@@ -66,43 +76,14 @@ class Notifier(ABC):
         """Check if this notifier has all required configuration."""
         pass
 
-    def build_message(
-        self,
-        offer: FlightOffer,
-        stats: PriceStats,
-        discount_pct: float,
-    ) -> str:
-        """Build a standard notification message."""
-        route = f"{offer.origin} -> {offer.destination}"
-        ret = f" / Regreso: {offer.return_date}" if offer.return_date else ""
+    def send_summary(self, results: list["FlightCheckResult"]) -> bool:
+        """
+        Send a daily summary of all flight checks.
 
-        lines = [
-            "ALERTA DE VUELO BARATO",
-            "",
-            f"Ruta:    {route}",
-            f"Fecha:   {offer.depart_date}{ret}",
-            "",
-            f"Precio actual:     {offer.currency} {offer.price:,.0f}",
-        ]
+        Args:
+            results: List of flight check results
 
-        if stats.avg_low_price:
-            lines.append(f"Promedio LOW:      {offer.currency} {stats.avg_low_price:,.0f}")
-            lines.append(f"")
-            lines.append(f"*** {discount_pct:.1f}% POR DEBAJO DEL PROMEDIO ***")
-
-        lines.extend([
-            "",
-            f"Aerolinea: {offer.airline}",
-            f"Escalas:   {offer.stops}",
-            "Itinerario:",
-        ])
-
-        for seg in offer.segments:
-            lines.append(f"  - {seg}")
-
-        lines.extend([
-            "",
-            "Busca en: https://www.google.com/flights",
-        ])
-
-        return "\n".join(lines)
+        Returns:
+            True if summary was sent successfully, False otherwise
+        """
+        return False  # Default: do nothing, subclasses can override

@@ -4,7 +4,7 @@ from typing import Optional
 
 import requests
 
-from .base import FlightOffer, Notifier, PriceStats
+from .base import FlightOffer, Notifier
 
 
 class TelegramNotifier(Notifier):
@@ -26,13 +26,25 @@ class TelegramNotifier(Notifier):
     def send(
         self,
         offer: FlightOffer,
-        stats: PriceStats,
         discount_pct: float,
     ) -> bool:
         if not self.is_configured():
             return False
 
-        text = self.build_message(offer, stats, discount_pct)
+        route = f"{offer.origin} -> {offer.destination}"
+        lines = [
+            "ALERTA DE VUELO BARATO",
+            "",
+            f"Ruta: {route}",
+            f"Fecha: {offer.depart_date}",
+            f"Precio: {offer.currency} {offer.price:,.0f}",
+            f"Aerolinea: {offer.airline}",
+        ]
+        if offer.typical_price_low:
+            lines.append(f"Rango tipico: {offer.currency} {offer.typical_price_low:,.0f} - {offer.typical_price_high:,.0f}")
+            lines.append(f"{discount_pct:.1f}% por debajo del rango")
+
+        text = "\n".join(lines)
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
 
         try:

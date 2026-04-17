@@ -111,6 +111,18 @@ class SerpApiClient:
             category_label = "LOW" if price_category == "best" else "OTHER"
             print(f"[SerpApi] Categoria de precio: {category_label}")
 
+            # Extract price insights from Google
+            price_insights = data.get("price_insights", {})
+            typical_range = price_insights.get("typical_price_range", [None, None])
+            typical_low = typical_range[0] if len(typical_range) > 0 else None
+            typical_high = typical_range[1] if len(typical_range) > 1 else None
+            price_level = price_insights.get("price_level")
+
+            if typical_low and typical_high:
+                print(f"[SerpApi] Rango tipico Google: {flight.currency} {typical_low:,.0f} - {typical_high:,.0f}")
+            if price_level:
+                print(f"[SerpApi] Nivel de precio Google: {price_level.upper()}")
+
             return FlightOffer(
                 price=float(price),
                 currency=flight.currency,
@@ -122,6 +134,9 @@ class SerpApiClient:
                 depart_date=flight.depart_date,
                 return_date=flight.return_date,
                 price_category=price_category,
+                typical_price_low=float(typical_low) if typical_low else None,
+                typical_price_high=float(typical_high) if typical_high else None,
+                price_level=price_level,
             )
 
         except requests.exceptions.RequestException as e:

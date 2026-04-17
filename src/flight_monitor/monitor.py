@@ -6,11 +6,8 @@ from datetime import datetime
 from typing import Optional, Protocol
 
 from .config import AppConfig, FlightConfig
-from .notifiers.base import FlightOffer, Notifier, PriceStats
+from .notifiers.base import FlightCheckResult, FlightOffer, Notifier
 from .storage.sqlite import SQLiteStorage
-
-# Minimum discount percentage to trigger alert (10% below average LOW)
-ALERT_DISCOUNT_THRESHOLD = 10.0
 
 
 class FlightClient(Protocol):
@@ -45,67 +42,63 @@ class FlightMonitor:
         self.storage = storage
         self.notifiers = [n for n in notifiers if n.is_configured()]
 
-    def calculate_discount(self, current_price: float, avg_low_price: float) -> float:
+    def calculate_discount(self, current_price: float, typical_low: float) -> float:
         """
-        Calculate the percentage discount from average LOW price.
+        Calculate the percentage discount from Google's typical low price.
 
         Args:
             current_price: Current flight price
-            avg_low_price: Historical average of LOW category prices
+            typical_low: Google's typical price range lower bound
 
         Returns:
-            Discount percentage (positive means cheaper than average)
+            Discount percentage (positive means cheaper than typical)
         """
-        if avg_low_price <= 0:
+        if typical_low <= 0:
             return 0.0
-        return ((avg_low_price - current_price) / avg_low_price) * 100
+        return ((typical_low - current_price) / typical_low) * 100
 
-    def should_alert(self, current_price: float, stats: PriceStats) -> tuple[bool, float]:
+    def should_recommend(self, offer: FlightOffer) -> tuple[bool, float]:
         """
-        Determine if a notification should be sent.
+        Determine if purchase should be recommended based on Google's typical price range.
 
-        Alert only if price is 10% or more below the average LOW price.
+        Recommend if price is below the typical price range lower bound.
 
         Args:
-            current_price: Current flight price
-            stats: Historical price statistics
+            offer: Flight offer with price insights from Google
 
         Returns:
-            Tuple of (should_alert, discount_percentage)
+            Tuple of (should_recommend, discount_percentage)
         """
-        # Need at least some LOW price history to compare
-        if stats.avg_low_price is None or stats.count_low < 1:
+        if offer.typical_price_low is None:
             return False, 0.0
 
-        discount_pct = self.calculate_discount(current_price, stats.avg_low_price)
+        discount_pct = self.calculate_discount(offer.price, offer.typical_price_low)
 
-        # Alert if 10% or more below average LOW price
-        should_notify = discount_pct >= ALERT_DISCOUNT_THRESHOLD
+        # Recommend if price is below typical low (discount_pct > 0)
+        should_buy = discount_pct > 0
 
-        return should_notify, discount_pct
+        return should_buy, discount_pct
 
-    def _notify_all(self, offer: FlightOffer, stats: PriceStats, discount_pct: float) -> None:
-        """Send notifications through all configured notifiers."""
-        for notifier in self.notifiers:
-            notifier.send(offer, stats, discount_pct)
-
-    def check_flight(self, flight: FlightConfig) -> None:
+    def check_flight(self, flight: FlightConfig) -> Optional[FlightCheckResult]:
         """
         Check price for a single flight.
 
         Args:
             flight: Flight configuration to check
+
+        Returns:
+            FlightCheckResult with offer and recommendation, or None if failed
         """
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         route = f"{flight.origin} -> {flight.destination}"
         print(f"\n{'='*50}")
         print(f"[{now}] Chequeando {route} ({flight.depart_date})")
 
-        # 1. Fetch current price
+        # 1. Fetch current price with Google's price insights
         offer = self.client.fetch_cheapest_offer(flight)
         if offer is None:
-            print(f"[Monitor] No se pudo obtener precio para {route}. Reintentara en el proximo ciclo.")
-            return
+            print(f"[Monitor] No se pudo obtener precio para {route}.")
+            return None
 
         category_label = "LOW" if offer.price_category == "best" else "OTHER"
         print(
@@ -113,42 +106,37 @@ class FlightMonitor:
             f"({offer.airline}, {offer.stops} escala(s)) [{category_label}]"
         )
 
-        # 2. Get price statistics BEFORE inserting
-        stats = self.storage.get_price_stats(
-            flight.origin, flight.destination, flight.depart_date
-        )
-
-        # 3. Save to history
+        # 2. Save to history
         self.storage.insert_price(offer)
 
-        # 4. Show statistics
-        if stats.avg_low_price:
-            discount_pct = self.calculate_discount(offer.price, stats.avg_low_price)
-            print(f"[Monitor] Promedio LOW historico: {offer.currency} {stats.avg_low_price:,.0f} ({stats.count_low} registros)")
+        # 3. Compare with Google's typical price range
+        should_buy, discount_pct = self.should_recommend(offer)
+
+        if offer.typical_price_low:
             if discount_pct > 0:
-                print(f"[Monitor] Precio actual esta {discount_pct:.1f}% POR DEBAJO del promedio LOW")
+                print(f"[Monitor] Precio {discount_pct:.1f}% POR DEBAJO del rango tipico")
             else:
-                print(f"[Monitor] Precio actual esta {abs(discount_pct):.1f}% POR ENCIMA del promedio LOW")
-        else:
-            print(f"[Monitor] Sin historial de precios LOW aun. Acumulando datos...")
+                print(f"[Monitor] Precio {abs(discount_pct):.1f}% por encima del rango tipico")
 
-        # 5. Decide whether to notify (only if 10%+ below average LOW)
-        should_notify, discount_pct = self.should_alert(offer.price, stats)
-
-        if should_notify:
-            print(f"[Monitor] *** ALERTA! {discount_pct:.1f}% por debajo del promedio LOW ***")
-            self._notify_all(offer, stats, discount_pct)
-        else:
-            if stats.avg_low_price:
-                print(f"[Monitor] No se envia alerta (umbral: {ALERT_DISCOUNT_THRESHOLD}% bajo promedio LOW)")
+            if should_buy:
+                print(f"[Monitor] *** RECOMENDADO COMPRAR ***")
             else:
-                print(f"[Monitor] No se envia alerta (acumulando historial LOW)")
+                print(f"[Monitor] Esperar mejor precio")
+        else:
+            print(f"[Monitor] Google no proporciono rango tipico para esta ruta")
 
-    async def check_all_flights_async(self) -> None:
+        # Return result for summary
+        return FlightCheckResult(
+            offer=offer,
+            discount_pct=discount_pct,
+            recommended=should_buy,
+        )
+
+    async def check_all_flights_async(self) -> list[FlightCheckResult]:
         """Check all configured flights concurrently."""
         if not self.config.flights:
             print("[Monitor] No hay vuelos configurados.")
-            return
+            return []
 
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=len(self.config.flights)) as executor:
@@ -156,11 +144,14 @@ class FlightMonitor:
                 loop.run_in_executor(executor, self.check_flight, flight)
                 for flight in self.config.flights
             ]
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
 
-    def check_all_flights(self) -> None:
+        # Filter out None results (failed checks)
+        return [r for r in results if r is not None]
+
+    def check_all_flights(self) -> list[FlightCheckResult]:
         """Check all configured flights (sync wrapper)."""
-        asyncio.run(self.check_all_flights_async())
+        return asyncio.run(self.check_all_flights_async())
 
     def print_history(self) -> None:
         """Print recent price history for all flights."""
@@ -169,17 +160,12 @@ class FlightMonitor:
             rows = self.storage.get_price_history(
                 flight.origin, flight.destination, flight.depart_date, limit=10
             )
-            stats = self.storage.get_price_stats(
-                flight.origin, flight.destination, flight.depart_date
-            )
 
             if not rows:
                 print(f"\n[{route}] Sin historial previo.")
                 continue
 
             print(f"\n--- {route} ({flight.depart_date}) ---")
-            if stats.avg_low_price:
-                print(f"    Promedio LOW: {rows[0].currency} {stats.avg_low_price:,.0f} ({stats.count_low} registros)")
             print(f"    Ultimos {len(rows)} registros:")
             for record in rows:
                 cat = "LOW" if record.price_category == "best" else "   "
@@ -193,7 +179,7 @@ class FlightMonitor:
         print("=" * 50)
         print("  Flight Monitor (SerpApi)")
         print(f"  Monitoreando {len(self.config.flights)} vuelo(s)")
-        print(f"  Alerta: cuando precio este {ALERT_DISCOUNT_THRESHOLD}%+ bajo promedio LOW")
+        print("  Alerta: cuando precio < rango tipico de Google")
         print(f"  Intervalo: cada {self.config.check_interval_minutes} minutos")
         print("=" * 50)
 
@@ -220,15 +206,24 @@ class FlightMonitor:
         except KeyboardInterrupt:
             print("\n[Monitor] Detenido por el usuario.")
 
+    def _send_summary(self, results: list[FlightCheckResult]) -> None:
+        """Send daily summary through all configured notifiers."""
+        for notifier in self.notifiers:
+            notifier.send_summary(results)
+
     def run_once(self) -> None:
         """Run a single check and exit (for cron jobs)."""
         print("=" * 50)
         print("  Flight Monitor (SerpApi) - Modo unico")
         print(f"  Chequeando {len(self.config.flights)} vuelo(s)")
-        print(f"  Alerta: cuando precio este {ALERT_DISCOUNT_THRESHOLD}%+ bajo promedio LOW")
+        print("  Alerta: cuando precio < rango tipico de Google")
         print("=" * 50)
 
         # Run single check
-        self.check_all_flights()
+        results = self.check_all_flights()
+
+        # Send daily summary
+        if results:
+            self._send_summary(results)
 
         print("\n[Monitor] Chequeo completado.")
