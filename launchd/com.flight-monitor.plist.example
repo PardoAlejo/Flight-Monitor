@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.example.flight-monitor</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/sh</string>
+		<string>-c</string>
+		<string>umask 077 &amp;&amp; cd /ABSOLUTE/PATH/TO/Flight-Monitor &amp;&amp; PYTHONPATH=src .venv/bin/python -m flight_monitor --scheduled &gt;&gt; monitor.log 2&gt;&amp;1</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/ABSOLUTE/PATH/TO/Flight-Monitor</string>
+
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Minute</key>
+		<integer>0</integer>
+	</dict>
+
+	<key>RunAtLoad</key>
+	<true/>
+</dict>
+</plist>

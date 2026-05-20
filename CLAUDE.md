@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Flight Monitor tracks flight prices using Google Flights (via SerpApi) and sends notifications (email/Telegram) when prices reach historical minimums. Supports monitoring multiple flights concurrently.
+Flight Monitor tracks flight prices using Google Flights (via SerpApi) and sends a **daily summary** (email/Telegram) with purchase recommendations based on Google's typical price range. Supports monitoring multiple flights concurrently.
 
 ## Commands (UV)
 
@@ -18,6 +18,9 @@ uv run python -m flight_monitor
 # Run single check and exit (for cron)
 uv run python -m flight_monitor --once
 
+# Run only when a scheduled slot or retry window is due
+uv run python -m flight_monitor --scheduled
+
 # Run linter
 uv run ruff check src/
 
@@ -25,72 +28,93 @@ uv run ruff check src/
 uv run mypy src/
 ```
 
-## Scheduled Execution (Cron)
+## Scheduled Execution
 
-To save API calls, run checks at specific times instead of continuously:
+The recommended production setup uses `--scheduled` with an hourly cron/launchd job. The scheduler reads a JSON state file and only runs when a configured time slot is due or a previous run failed:
 
 ```bash
-# Edit crontab
-crontab -e
-
-# Add these lines for 6 AM and 6 PM daily:
-0 6 * * * cd /path/to/Flight-Monitor && uv run python -m flight_monitor --once >> monitor.log 2>&1
-0 18 * * * cd /path/to/Flight-Monitor && uv run python -m flight_monitor --once >> monitor.log 2>&1
+# cron: run every hour, execute only at 10:00, 15:30 or their retries
+0 * * * * cd /path/to/Flight-Monitor && uv run python -m flight_monitor --scheduled >> monitor.log 2>&1
 ```
 
-**API usage with 2 flights:**
-- 2 checks/day × 2 flights = 4 API calls/day
-- ~120 calls/month (within 100-call free tier if monitoring 1 flight)
+**macOS launchd**: use `launchd/com.flight-monitor.plist.example` as a template for an hourly LaunchAgent.
+
+**API usage with 2 flights and 2 slots/day:**
+- 2 checks/day × 2 flights = 4 API calls/day (~120/month)
+- SerpApi free tier: 100 calls/month → limit to 1 flight or 1 slot/day
 
 ## Architecture
 
 ```
 src/flight_monitor/
-├── __main__.py          ← Entry point, dependency injection setup
+├── __main__.py          ← Entry point, arg parsing, dependency injection
 ├── config.py            ← Configuration from .env + flights.yaml
 ├── monitor.py           ← FlightMonitor orchestrator (async)
+├── scheduler.py         ← RetryScheduler — persists slot state in JSON
 ├── clients/
-│   └── serpapi.py       ← SerpApiClient (Google Flights)
+│   └── serpapi.py       ← SerpApiClient (Google Flights + price_insights)
 ├── storage/
 │   └── sqlite.py        ← SQLiteStorage with DI
 └── notifiers/
-    ├── base.py          ← Notifier protocol + data classes
-    ├── email.py         ← EmailNotifier plugin
-    └── telegram.py      ← TelegramNotifier plugin
+    ├── base.py          ← Notifier protocol, FlightOffer, FlightCheckResult
+    ├── email.py         ← EmailNotifier — daily summary via Gmail SMTP
+    └── telegram.py      ← TelegramNotifier — daily summary via Bot API
 ```
 
 **Key design patterns:**
 - **Dependency Injection**: All components receive dependencies via constructor
-- **Plugin Architecture**: Notifiers implement `Notifier` protocol
-- **Async Concurrency**: Multiple flights checked in parallel
+- **Plugin Architecture**: Notifiers implement `Notifier` abstract class (`is_configured()`, `send_summary()`)
+- **Async Concurrency**: Multiple flights checked in parallel via `ThreadPoolExecutor` + `asyncio.gather`
 - **FlightClient Protocol**: Easy to swap SerpApi for another provider
 
 **Data flow:**
 1. `__main__.py` loads config and injects dependencies into `FlightMonitor`
 2. `FlightMonitor.check_all_flights_async()` spawns concurrent checks
-3. `SerpApiClient.fetch_cheapest_offer()` queries Google Flights, returns `FlightOffer`
-4. `SQLiteStorage` handles persistence, returns `PriceRecord`
-5. Configured `Notifier` plugins receive `FlightOffer` + `PriceRecord`
+3. `SerpApiClient.fetch_cheapest_offer()` queries Google Flights, returns `FlightOffer` with `typical_price_low`, `typical_price_high`, `price_level`
+4. `SQLiteStorage.insert_price()` persists the record
+5. `FlightMonitor.should_recommend()` compares `offer.price` vs `offer.typical_price_low` — recommends if price is below the typical range lower bound
+6. `FlightMonitor._send_summary()` calls `notifier.send_summary(results)` on all configured notifiers
+
+## Alert Logic
+
+Recommendation is triggered when `price < typical_price_low` (discount_pct > 0):
+
+```python
+discount_pct = (typical_price_low - price) / typical_price_low * 100
+recommended = discount_pct > 0
+```
+
+If Google doesn't return `price_insights` for a route, no recommendation is made.
 
 ## Configuration
 
 **Environment variables** (`.env`):
-- `SERPAPI_KEY` - SerpApi key (https://serpapi.com)
-- `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVER` - Gmail SMTP
-- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` - Telegram bot
+- `SERPAPI_KEY` — SerpApi key (required)
+- `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVER` — Gmail SMTP (optional; multiple receivers comma-separated)
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram bot (optional)
+- `DB_PATH` — SQLite database path (default: `flight_prices.db`)
+- `CHECK_INTERVAL_MINUTES` — interval for continuous mode (default: 60)
+- `SCHEDULED_TIMES` — comma-separated HH:MM slots for `--scheduled` (default: `10:00,15:30`)
+- `RETRY_DELAY_MINUTES` — wait before retrying a failed slot (default: 60)
+- `SCHEDULER_STATE_PATH` — JSON state file for scheduler (default: `.flight_monitor_scheduler.json`)
 
-**Multiple flights** (`flights.yaml`):
+**Flights** (`flights.yaml`):
 ```yaml
 flights:
   - origin: BOG
     destination: MAD
     depart_date: "2025-12-01"
+    return_date: "2025-12-15"  # optional
+    adults: 1                  # optional, default 1
+    currency: USD              # optional, default USD
 ```
+
+Backwards-compatible: single flight can also be set via `FLIGHT_ORIGIN`, `FLIGHT_DESTINATION`, `FLIGHT_DEPART_DATE` env vars.
 
 ## Adding a New Notifier
 
 1. Create `src/flight_monitor/notifiers/slack.py`
-2. Implement `Notifier` protocol from `base.py`
+2. Subclass `Notifier` from `base.py` and implement `is_configured()` and `send_summary(results)`
 3. Add to `__main__.py` notifiers list
 
 ## Adding a New Flight Provider
@@ -101,4 +125,19 @@ flights:
 
 ## Database
 
-SQLite table `prices`: `id`, `origin`, `destination`, `depart_date`, `return_date`, `price`, `currency`, `airline`, `checked_at`
+SQLite table `prices`:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | autoincrement |
+| `origin` | TEXT | IATA code |
+| `destination` | TEXT | IATA code |
+| `depart_date` | TEXT | YYYY-MM-DD |
+| `return_date` | TEXT | nullable |
+| `price` | REAL | total price (all passengers) |
+| `currency` | TEXT | ISO currency code |
+| `airline` | TEXT | first leg airline |
+| `price_category` | TEXT | `"best"` (LOW) or `"other"` |
+| `checked_at` | TEXT | ISO 8601 UTC timestamp |
+
+`price_category` column is migrated automatically if the DB was created before it was added.

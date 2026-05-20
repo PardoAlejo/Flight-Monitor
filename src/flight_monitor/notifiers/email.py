@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
-from .base import FlightCheckResult, FlightOffer, Notifier
+from .base import FlightCheckResult, Notifier
 
 
 class EmailNotifier(Notifier):
@@ -32,54 +32,13 @@ class EmailNotifier(Notifier):
     def is_configured(self) -> bool:
         return bool(self.sender and self.password and self.receivers)
 
-    def send(
-        self,
-        offer: FlightOffer,
-        discount_pct: float,
-    ) -> bool:
-        """Send alert email for a single flight (legacy method)."""
+    def send_summary(self, results: list[FlightCheckResult]) -> bool:
+        """Send daily summary email with all flight check results."""
         if not self.is_configured():
             return False
 
-        route = f"{offer.origin} -> {offer.destination}"
-        body_lines = [
-            "ALERTA DE VUELO BARATO",
-            "",
-            f"Ruta: {route}",
-            f"Fecha: {offer.depart_date}",
-            f"Precio actual: {offer.currency} {offer.price:,.0f}",
-            f"Aerolinea: {offer.airline}",
-        ]
-        if offer.typical_price_low:
-            body_lines.append(f"Rango tipico Google: {offer.currency} {offer.typical_price_low:,.0f} - {offer.typical_price_high:,.0f}")
-            body_lines.append(f"{discount_pct:.1f}% por debajo del rango tipico")
-
-        body = "\n".join(body_lines)
-        subject = (
-            f"VUELO BARATO: {offer.origin}->{offer.destination} "
-            f"{offer.currency} {offer.price:,.0f}"
-        )
-
-        msg = MIMEMultipart()
-        msg["From"] = self.sender
-        msg["To"] = ", ".join(self.receivers)
-        msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain"))
-
-        try:
-            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
-                server.login(self.sender, self.password)
-                server.sendmail(self.sender, self.receivers, msg.as_string())
-            print(f"[Email] Alerta enviada a {', '.join(self.receivers)}")
-            return True
-        except Exception as e:
-            print(f"[Email] Error al enviar: {e}")
-            return False
-
-    def send_summary(self, results: list[FlightCheckResult]) -> bool:
-        """Send daily summary email with all flight check results."""
-        if not self.is_configured() or not results:
-            return False
+        assert self.sender is not None
+        assert self.password is not None
 
         today = datetime.now().strftime("%Y-%m-%d %H:%M")
         lines = [
@@ -90,41 +49,65 @@ class EmailNotifier(Notifier):
         ]
 
         any_recommended = False
-        for result in results:
-            offer = result.offer
-            route = f"{offer.origin} -> {offer.destination}"
-            ret = f" (ida/vuelta: {offer.return_date})" if offer.return_date else " (solo ida)"
+        if not results:
+            lines.append("No hubo vuelos para resumir en esta ejecucion.")
+            lines.append("")
+        else:
+            for result in results:
+                route = f"{result.origin} -> {result.destination}"
+                ret = (
+                    f" (ida/vuelta: {result.return_date})"
+                    if result.return_date
+                    else " (solo ida)"
+                )
 
-            lines.append(f"VUELO: {route}{ret}")
-            lines.append(f"  Fecha salida:    {offer.depart_date}")
-            lines.append(f"  Precio actual:   {offer.currency} {offer.price:,.0f}")
-            lines.append(f"  Aerolinea:       {offer.airline}")
-            lines.append(f"  Escalas:         {offer.stops}")
+                lines.append(f"VUELO: {route}{ret}")
+                lines.append(f"  Fecha salida:    {result.depart_date}")
 
-            # Show Google's typical price range
-            if offer.typical_price_low and offer.typical_price_high:
-                lines.append(f"  Rango tipico:    {offer.currency} {offer.typical_price_low:,.0f} - {offer.typical_price_high:,.0f}")
-                if result.discount_pct > 0:
-                    lines.append(f"  vs Rango tipico: {result.discount_pct:.1f}% MAS BARATO")
+                if not result.succeeded or result.offer is None:
+                    error_detail = result.error_message or "No se pudo consultar el vuelo"
+                    lines.append("  Estado:          ERROR")
+                    lines.append(f"  Detalle:         {error_detail}")
+                    lines.append("")
+                    lines.append("-" * 50)
+                    lines.append("")
+                    continue
+
+                offer = result.offer
+                lines.append("  Estado:          OK")
+                lines.append(f"  Pasajeros:       {offer.adults}")
+                lines.append(f"  Precio total:    {offer.currency} {offer.price:,.0f}")
+                lines.append(f"  Precio/persona:  {offer.currency} {offer.price_per_person:,.0f}")
+                lines.append(f"  Aerolinea:       {offer.airline}")
+                lines.append(f"  Escalas:         {offer.stops}")
+
+                # Show Google's typical price range
+                if offer.typical_price_low and offer.typical_price_high:
+                    low = f"{offer.typical_price_low:,.0f}"
+                    high = f"{offer.typical_price_high:,.0f}"
+                    lines.append(f"  Rango tipico:    {offer.currency} {low} - {high}")
+                    if result.discount_pct > 0:
+                        lines.append(f"  vs Rango tipico: {result.discount_pct:.1f}% MAS BARATO")
+                    else:
+                        lines.append(f"  vs Rango tipico: {abs(result.discount_pct):.1f}% mas caro")
                 else:
-                    lines.append(f"  vs Rango tipico: {abs(result.discount_pct):.1f}% mas caro")
-            else:
-                lines.append("  Rango tipico:    No disponible")
+                    lines.append("  Rango tipico:    No disponible")
 
-            # Show Google's price level assessment
-            if offer.price_level:
-                level_es = {"low": "BAJO", "typical": "TIPICO", "high": "ALTO"}.get(offer.price_level, offer.price_level.upper())
-                lines.append(f"  Nivel Google:    {level_es}")
+                # Show Google's price level assessment
+                if offer.price_level:
+                    level_map = {"low": "BAJO", "typical": "TIPICO", "high": "ALTO"}
+                    level_es = level_map.get(offer.price_level, offer.price_level.upper())
+                    lines.append(f"  Nivel Google:    {level_es}")
 
-            if result.recommended:
-                lines.append("  >>> RECOMENDADO COMPRAR <<<")
-                any_recommended = True
-            else:
-                lines.append("  Recomendacion:   Esperar mejor precio")
+                if result.recommended:
+                    lines.append("  >>> RECOMENDADO COMPRAR <<<")
+                    any_recommended = True
+                else:
+                    lines.append("  Recomendacion:   Esperar mejor precio")
 
-            lines.append("")
-            lines.append("-" * 50)
-            lines.append("")
+                lines.append("")
+                lines.append("-" * 50)
+                lines.append("")
 
         lines.extend([
             "Busca en: https://www.google.com/flights",

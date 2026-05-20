@@ -18,7 +18,6 @@ class FlightConfig:
     return_date: Optional[str] = None
     adults: int = 1
     currency: str = "USD"
-    alert_threshold_pct: float = 0.0
 
 
 @dataclass
@@ -41,6 +40,9 @@ class AppConfig:
 
     # Monitoring
     check_interval_minutes: int = 60
+    retry_delay_minutes: int = 60
+    scheduled_times: list[str] = field(default_factory=lambda: ["10:00", "15:30"])
+    scheduler_state_path: str = ".flight_monitor_scheduler.json"
 
     # Flights to monitor
     flights: list[FlightConfig] = field(default_factory=list)
@@ -66,7 +68,6 @@ def load_flights_from_yaml(path: Path) -> list[FlightConfig]:
             return_date=flight_data.get("return_date"),
             adults=flight_data.get("adults", 1),
             currency=flight_data.get("currency", "USD"),
-            alert_threshold_pct=flight_data.get("alert_threshold_pct", 0.0),
         ))
 
     return flights
@@ -92,6 +93,8 @@ def load_config(env_path: Optional[Path] = None, flights_path: Optional[Path] = 
     # Load flights from YAML
     flights_file = flights_path or Path("flights.yaml")
     flights = load_flights_from_yaml(flights_file)
+    scheduled_times_raw = os.getenv("SCHEDULED_TIMES", "10:00,15:30")
+    scheduled_times = [item.strip() for item in scheduled_times_raw.split(",") if item.strip()]
 
     # If no flights.yaml, check for single flight in env vars (backwards compatibility)
     if not flights:
@@ -107,7 +110,6 @@ def load_config(env_path: Optional[Path] = None, flights_path: Optional[Path] = 
                 return_date=os.getenv("FLIGHT_RETURN_DATE"),
                 adults=int(os.getenv("FLIGHT_ADULTS", "1")),
                 currency=os.getenv("FLIGHT_CURRENCY", "USD"),
-                alert_threshold_pct=float(os.getenv("ALERT_THRESHOLD_PCT", "0.0")),
             ))
 
     return AppConfig(
@@ -119,5 +121,10 @@ def load_config(env_path: Optional[Path] = None, flights_path: Optional[Path] = 
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID"),
         db_path=os.getenv("DB_PATH", "flight_prices.db"),
         check_interval_minutes=int(os.getenv("CHECK_INTERVAL_MINUTES", "60")),
+        retry_delay_minutes=int(os.getenv("RETRY_DELAY_MINUTES", "60")),
+        scheduled_times=scheduled_times,
+        scheduler_state_path=os.getenv(
+            "SCHEDULER_STATE_PATH", ".flight_monitor_scheduler.json"
+        ),
         flights=flights,
     )

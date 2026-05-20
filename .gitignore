@@ -18,6 +18,11 @@ flights.yaml
 # Logs pueden contener información sensible
 *.log
 monitor.log
+.flight_monitor_scheduler.json
+
+# launchd local config
+launchd/*.plist
+!launchd/*.plist.example
 
 # ===========================================
 # ARCHIVOS DE SISTEMA Y DESARROLLO
@@ -57,6 +62,8 @@ env/
 # IDE
 .idea/
 .vscode/
+.claude/
+.claude/settings.local.json
 *.swp
 *.swo
 *~

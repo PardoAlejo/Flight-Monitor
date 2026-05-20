@@ -79,7 +79,7 @@ class FlightMonitor:
 
         return should_buy, discount_pct
 
-    def check_flight(self, flight: FlightConfig) -> Optional[FlightCheckResult]:
+    def check_flight(self, flight: FlightConfig) -> FlightCheckResult:
         """
         Check price for a single flight.
 
@@ -87,7 +87,7 @@ class FlightMonitor:
             flight: Flight configuration to check
 
         Returns:
-            FlightCheckResult with offer and recommendation, or None if failed
+            FlightCheckResult with offer details or failure metadata
         """
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
         route = f"{flight.origin} -> {flight.destination}"
@@ -98,13 +98,27 @@ class FlightMonitor:
         offer = self.client.fetch_cheapest_offer(flight)
         if offer is None:
             print(f"[Monitor] No se pudo obtener precio para {route}.")
-            return None
+            return FlightCheckResult(
+                origin=flight.origin,
+                destination=flight.destination,
+                depart_date=flight.depart_date,
+                return_date=flight.return_date,
+                error_message="No se pudo obtener precio desde SerpApi.",
+            )
 
         category_label = "LOW" if offer.price_category == "best" else "OTHER"
-        print(
-            f"[Monitor] Precio encontrado: {offer.currency} {offer.price:,.0f} "
-            f"({offer.airline}, {offer.stops} escala(s)) [{category_label}]"
-        )
+        if offer.adults > 1:
+            total = f"{offer.currency} {offer.price:,.0f}"
+            per_person = f"{offer.currency} {offer.price_per_person:,.0f}"
+            print(
+                f"[Monitor] Precio: {total} ({per_person}/persona, {offer.adults} pax) "
+                f"[{offer.airline}, {offer.stops} escala(s), {category_label}]"
+            )
+        else:
+            print(
+                f"[Monitor] Precio encontrado: {offer.currency} {offer.price:,.0f} "
+                f"({offer.airline}, {offer.stops} escala(s)) [{category_label}]"
+            )
 
         # 2. Save to history
         self.storage.insert_price(offer)
@@ -119,14 +133,18 @@ class FlightMonitor:
                 print(f"[Monitor] Precio {abs(discount_pct):.1f}% por encima del rango tipico")
 
             if should_buy:
-                print(f"[Monitor] *** RECOMENDADO COMPRAR ***")
+                print("[Monitor] *** RECOMENDADO COMPRAR ***")
             else:
-                print(f"[Monitor] Esperar mejor precio")
+                print("[Monitor] Esperar mejor precio")
         else:
-            print(f"[Monitor] Google no proporciono rango tipico para esta ruta")
+            print("[Monitor] Google no proporciono rango tipico para esta ruta")
 
         # Return result for summary
         return FlightCheckResult(
+            origin=flight.origin,
+            destination=flight.destination,
+            depart_date=flight.depart_date,
+            return_date=flight.return_date,
             offer=offer,
             discount_pct=discount_pct,
             recommended=should_buy,
@@ -146,8 +164,7 @@ class FlightMonitor:
             ]
             results = await asyncio.gather(*tasks)
 
-        # Filter out None results (failed checks)
-        return [r for r in results if r is not None]
+        return results
 
     def check_all_flights(self) -> list[FlightCheckResult]:
         """Check all configured flights (sync wrapper)."""
@@ -174,6 +191,13 @@ class FlightMonitor:
                     f"({record.airline}) [{cat}]"
                 )
 
+    def _send_summary(self, results: list[FlightCheckResult]) -> bool:
+        """Send a summary through all configured notifiers."""
+        summary_sent = True
+        for notifier in self.notifiers:
+            summary_sent = notifier.send_summary(results) and summary_sent
+        return summary_sent
+
     async def run_async(self) -> None:
         """Main async loop that checks prices at configured intervals."""
         print("=" * 50)
@@ -186,8 +210,13 @@ class FlightMonitor:
         # Show previous history
         self.print_history()
 
+        last_summary_date: Optional[str] = None
+
         # Initial check
-        await self.check_all_flights_async()
+        results = await self.check_all_flights_async()
+        today = datetime.now().date().isoformat()
+        self._send_summary(results)
+        last_summary_date = today
 
         print(
             f"\n[Monitor] Corriendo. Proximo chequeo en "
@@ -197,7 +226,11 @@ class FlightMonitor:
         # Periodic checks
         while True:
             await asyncio.sleep(self.config.check_interval_minutes * 60)
-            await self.check_all_flights_async()
+            results = await self.check_all_flights_async()
+            today = datetime.now().date().isoformat()
+            if today != last_summary_date:
+                self._send_summary(results)
+                last_summary_date = today
 
     def run(self) -> None:
         """Main entry point (sync wrapper) - continuous mode."""
@@ -206,12 +239,7 @@ class FlightMonitor:
         except KeyboardInterrupt:
             print("\n[Monitor] Detenido por el usuario.")
 
-    def _send_summary(self, results: list[FlightCheckResult]) -> None:
-        """Send daily summary through all configured notifiers."""
-        for notifier in self.notifiers:
-            notifier.send_summary(results)
-
-    def run_once(self) -> None:
+    def run_once(self) -> bool:
         """Run a single check and exit (for cron jobs)."""
         print("=" * 50)
         print("  Flight Monitor (SerpApi) - Modo unico")
@@ -223,7 +251,11 @@ class FlightMonitor:
         results = self.check_all_flights()
 
         # Send daily summary
-        if results:
-            self._send_summary(results)
+        summary_sent = self._send_summary(results)
 
         print("\n[Monitor] Chequeo completado.")
+        checks_ok = all(result.succeeded for result in results)
+        run_ok = bool(results) and checks_ok and summary_sent
+        if not run_ok:
+            print("[Monitor] Ejecucion marcada para reintento.")
+        return run_ok

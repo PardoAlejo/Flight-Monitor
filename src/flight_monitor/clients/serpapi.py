@@ -22,6 +22,10 @@ class SerpApiClient:
         """
         self.api_key = api_key
 
+    def _sanitize_error(self, error: Exception) -> str:
+        """Remove secrets from exception messages before logging them."""
+        return str(error).replace(self.api_key, "***REDACTED***")
+
     def fetch_cheapest_offer(self, flight: FlightConfig) -> Optional[FlightOffer]:
         """
         Query Google Flights via SerpApi and return the cheapest flight found.
@@ -32,7 +36,7 @@ class SerpApiClient:
         Returns:
             FlightOffer with price details and category, or None if error/not found
         """
-        params = {
+        params: dict[str, str | int] = {
             "engine": "google_flights",
             "api_key": self.api_key,
             "departure_id": flight.origin,
@@ -62,7 +66,7 @@ class SerpApiClient:
             other_flights = data.get("other_flights", [])
 
             if not best_flights and not other_flights:
-                print(f"[SerpApi] No se encontraron vuelos para {flight.origin}->{flight.destination}")
+                print(f"[SerpApi] No hay vuelos {flight.origin}->{flight.destination}")
                 return None
 
             # Find cheapest from best_flights first (these are LOW category)
@@ -76,12 +80,14 @@ class SerpApiClient:
             # Check if there's a cheaper one in other_flights
             if other_flights:
                 cheapest_other = min(other_flights, key=lambda f: f.get("price", float("inf")))
-                if cheapest is None or cheapest_other.get("price", float("inf")) < cheapest.get("price", float("inf")):
+                other_price = cheapest_other.get("price", float("inf"))
+                current_price = cheapest.get("price", float("inf")) if cheapest else float("inf")
+                if cheapest is None or other_price < current_price:
                     cheapest = cheapest_other
                     price_category = "other"
 
             if cheapest is None:
-                print(f"[SerpApi] No se encontraron vuelos validos")
+                print("[SerpApi] No se encontraron vuelos validos")
                 return None
 
             price = cheapest.get("price", 0)
@@ -89,7 +95,7 @@ class SerpApiClient:
             # Extract flight details from first leg
             flights_info = cheapest.get("flights", [])
             if not flights_info:
-                print(f"[SerpApi] Respuesta sin detalles de vuelo")
+                print("[SerpApi] Respuesta sin detalles de vuelo")
                 return None
 
             first_flight = flights_info[0]
@@ -119,7 +125,8 @@ class SerpApiClient:
             price_level = price_insights.get("price_level")
 
             if typical_low and typical_high:
-                print(f"[SerpApi] Rango tipico Google: {flight.currency} {typical_low:,.0f} - {typical_high:,.0f}")
+                low_fmt, high_fmt = f"{typical_low:,.0f}", f"{typical_high:,.0f}"
+                print(f"[SerpApi] Rango tipico Google: {flight.currency} {low_fmt} - {high_fmt}")
             if price_level:
                 print(f"[SerpApi] Nivel de precio Google: {price_level.upper()}")
 
@@ -133,6 +140,7 @@ class SerpApiClient:
                 destination=flight.destination,
                 depart_date=flight.depart_date,
                 return_date=flight.return_date,
+                adults=flight.adults,
                 price_category=price_category,
                 typical_price_low=float(typical_low) if typical_low else None,
                 typical_price_high=float(typical_high) if typical_high else None,
@@ -140,7 +148,7 @@ class SerpApiClient:
             )
 
         except requests.exceptions.RequestException as e:
-            print(f"[SerpApi] Error de conexion: {e}")
+            print(f"[SerpApi] Error de conexion: {self._sanitize_error(e)}")
             return None
         except (KeyError, ValueError, TypeError) as e:
             print(f"[SerpApi] Error procesando respuesta: {e}")

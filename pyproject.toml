@@ -10,14 +10,6 @@ dependencies = [
     "requests>=2.31.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21",
-    "mypy>=1.0",
-    "ruff>=0.1",
-]
-
 [project.scripts]
 flight-monitor = "flight_monitor.__main__:main"
 
@@ -28,12 +20,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/flight_monitor"]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
     "mypy>=1.0",
     "ruff>=0.1",
+    "types-PyYAML>=6.0.12",
+    "types-requests>=2.31.0",
 ]
 
 [tool.ruff]
