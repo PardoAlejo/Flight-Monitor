@@ -2,9 +2,9 @@ name: Flight Monitor
 
 on:
   schedule:
-    # Ejecutar a las 10:00 y 18:00 UTC todos los días
-    - cron: "0 10 * * *"
-    - cron: "0 18 * * *"
+    # Ejecutar a las 11:00 AM y 4:00 PM hora Colombia (UTC-5)
+    - cron: "0 16 * * *"  # 11:00 AM Colombia
+    - cron: "0 21 * * *"  # 4:00 PM Colombia
   workflow_dispatch:
     # Permite ejecutar manualmente desde GitHub Actions
 
