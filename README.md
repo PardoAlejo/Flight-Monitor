@@ -253,32 +253,79 @@ Descuento = (430 - 400) / 430 × 100 = 7.0%
 
 ### Formato de Notificacion (Resumen Diario)
 
-Cada corrida envia un **resumen** de todos los vuelos monitoreados, no alertas individuales:
+Cada corrida envia un **resumen** de todos los vuelos monitoreados con formato visual mejorado:
 
 ```
-RESUMEN DIARIO DE VUELOS
-Fecha: 2026-12-01 14:30
-==================================================
+══════════════════════════════════════════════════════════
+          ✈️  RESUMEN DIARIO DE VUELOS  ✈️
+══════════════════════════════════════════════════════════
+  📅 Fecha: Mie 21 May 2026
+  🕐 Hora:  11:00
+══════════════════════════════════════════════════════════
 
-VUELO: BOG -> MIA (solo ida)
-  Fecha salida:    2026-12-01
-  Estado:          OK
-  Pasajeros:       1
-  Precio total:    USD 400
-  Precio/persona:  USD 400
-  Aerolinea:       American Airlines
-  Escalas:         1
-  Rango tipico:    USD 430 - 550
-  vs Rango tipico: 7.0% MAS BARATO
-  Nivel Google:    BAJO
-  >>> RECOMENDADO COMPRAR <<<
+╔══════════════════════════════════════════════════════════╗
+║                    RESUMEN RAPIDO                        ║
+╠══════════════════════════════════════════════════════════╣
+║  BOG → IAD      COP 2,133,610        🟡 Esperar         ║
+║  BOG → LIM      COP 1,556,782        🟢 COMPRAR         ║
+╚══════════════════════════════════════════════════════════╝
 
---------------------------------------------------
+──────────────────────────────────────────────────────────
+✈️  VUELO: BOG → LIM (ida y vuelta)
+──────────────────────────────────────────────────────────
+  📅 Ida:        Dom 07 Sep 2026
+  📅 Vuelta:     Vie 12 Sep 2026
+  ⏱️  Duracion:   5 dias
 
-Busca en: https://www.google.com/flights
+  💰 Precio:     COP 1,050,000
+  🛫 Aerolinea:  LATAM (Directo)
+  ⏱️  Vuelo:      3h 45m
+
+  📊 Rango tipico Google: COP 1,100,000 - 1,450,000
+  📉 vs Tipico:  4.5% MAS BARATO 🎉
+  🏷️  Nivel:      BAJO 🟢
+
+  👉 🟢 COMPRAR AHORA
+
+  🔗 Ver en Google Flights:
+     https://www.google.com/travel/flights?q=...
+
+══════════════════════════════════════════════════════════
 ```
 
-El asunto del email es `[COMPRAR] Resumen vuelos <fecha>` si al menos un vuelo es recomendado.
+**Caracteristicas del formato:**
+- 📅 Fechas en español (Lun, Mar, Mie...) con dia de semana
+- ⏱️ Duracion del viaje y tiempo de vuelo
+- 🟢🟡🔴 Indicadores visuales de precio (bajo/tipico/alto)
+- 🔗 Links directos a Google Flights
+- 📊 Resumen rapido al inicio
+
+El asunto del email es `🟢 [COMPRAR] Vuelos DD/MM - Precio bajo detectado!` si al menos un vuelo es recomendado.
+
+### Formato Telegram
+
+```
+✈️ *RESUMEN DE VUELOS*
+📅 Mie 21 May • 11:00
+
+🟡 *BOG → IAD*
+   🗓 Jue 25 Jun → Lun 30 Jun (5d)
+   💰 COP 2,133,610
+   🛫 United • 12h 30m • 1 escala(s)
+   📈 25% sobre típico
+   ⏳ Esperar mejor precio
+
+🟢 *BOG → LIM*
+   🗓 Dom 07 Sep → Vie 12 Sep (5d)
+   💰 COP 1,050,000
+   🛫 LATAM • 3h 45m • directo
+   📉 4% bajo típico 🎉
+   ✅ *COMPRAR AHORA*
+
+🔔 *¡Hay vuelos recomendados para comprar!*
+
+🔍 google.com/flights
+```
 
 ---
 

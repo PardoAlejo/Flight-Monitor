@@ -68,9 +68,9 @@ src/flight_monitor/
 ├── storage/
 │   └── sqlite.py        ← SQLiteStorage with DI
 └── notifiers/
-    ├── base.py          ← Notifier protocol, FlightOffer, FlightCheckResult
-    ├── email.py         ← EmailNotifier — daily summary via Gmail SMTP
-    └── telegram.py      ← TelegramNotifier — daily summary via Bot API
+    ├── base.py          ← Notifier protocol, FlightOffer (with duration), FlightCheckResult
+    ├── email.py         ← EmailNotifier — rich daily summary via Gmail SMTP
+    └── telegram.py      ← TelegramNotifier — compact summary via Bot API
 ```
 
 **Key design patterns:**
@@ -82,10 +82,20 @@ src/flight_monitor/
 **Data flow:**
 1. `__main__.py` loads config and injects dependencies into `FlightMonitor`
 2. `FlightMonitor.check_all_flights_async()` spawns concurrent checks
-3. `SerpApiClient.fetch_cheapest_offer()` queries Google Flights, returns `FlightOffer` with `typical_price_low`, `typical_price_high`, `price_level`
+3. `SerpApiClient.fetch_cheapest_offer()` queries Google Flights, returns `FlightOffer` with `typical_price_low`, `typical_price_high`, `price_level`, `total_duration`
 4. `SQLiteStorage.insert_price()` persists the record
 5. `FlightMonitor.should_recommend()` compares `offer.price` vs `offer.typical_price_low` — recommends if price is below the typical range lower bound
 6. `FlightMonitor._send_summary()` calls `notifier.send_summary(results)` on all configured notifiers
+
+## Notification Features
+
+Both Email and Telegram notifiers include:
+- **Spanish date formatting**: "Lun 25 May 2026" with day of week
+- **Trip duration**: Days between departure and return
+- **Flight duration**: Total flight time (e.g., "12h 30m")
+- **Visual price indicators**: 🟢 (low/buy), 🟡 (typical), 🔴 (high)
+- **Quick summary table**: Overview of all flights at the top (email only)
+- **Google Flights links**: Direct search URLs (email only)
 
 ## Alert Logic
 
