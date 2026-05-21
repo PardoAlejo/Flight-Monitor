@@ -16,24 +16,37 @@ MONTHS_ES = [
 ]
 
 
-def format_date_spanish(date_str: str) -> str:
+def format_date_spanish(date_input: str | datetime) -> str:
     """Format date as 'Lun 25 May 2026' in Spanish."""
     try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        if isinstance(date_input, str):
+            dt = datetime.strptime(date_input, "%Y-%m-%d")
+        else:
+            dt = date_input
         day_name = DAYS_ES[dt.weekday()]
         month_name = MONTHS_ES[dt.month]
         return f"{day_name} {dt.day:02d} {month_name} {dt.year}"
-    except ValueError:
-        return date_str
+    except (ValueError, AttributeError):
+        return str(date_input)
 
 
-def calculate_trip_duration(depart_date: str, return_date: str) -> int:
+def _to_datetime(date_input: str | datetime) -> datetime:
+    """Convert string or date to datetime."""
+    if isinstance(date_input, str):
+        return datetime.strptime(date_input, "%Y-%m-%d")
+    if isinstance(date_input, datetime):
+        return date_input
+    # Handle date object
+    return datetime.combine(date_input, datetime.min.time())
+
+
+def calculate_trip_duration(depart_date: str | datetime, return_date: str | datetime) -> int:
     """Calculate trip duration in days."""
     try:
-        depart = datetime.strptime(depart_date, "%Y-%m-%d")
-        ret = datetime.strptime(return_date, "%Y-%m-%d")
+        depart = _to_datetime(depart_date)
+        ret = _to_datetime(return_date)
         return (ret - depart).days
-    except ValueError:
+    except (ValueError, AttributeError):
         return 0
 
 
