@@ -431,7 +431,7 @@ launchctl unload ~/Library/LaunchAgents/com.flight-monitor.plist
 
 La forma mas confiable de ejecutar el monitor es usando GitHub Actions. No requiere que tu computadora este encendida.
 
-El workflow `.github/workflows/monitor.yml` se ejecuta automaticamente a las 10:00 y 18:00 UTC todos los dias.
+El workflow `.github/workflows/monitor.yml` se ejecuta automaticamente a las 11:00 AM y 4:00 PM hora Colombia (16:00 y 21:00 UTC) todos los dias.
 
 **Configurar secrets en GitHub:**
 

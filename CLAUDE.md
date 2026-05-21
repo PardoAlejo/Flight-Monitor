@@ -45,7 +45,7 @@ The recommended production setup uses `--scheduled` with an hourly cron/launchd 
 
 ## GitHub Actions
 
-The workflow `.github/workflows/monitor.yml` runs automatically at 10:00 and 18:00 UTC daily.
+The workflow `.github/workflows/monitor.yml` runs automatically at 11:00 AM and 4:00 PM Colombia time (16:00 and 21:00 UTC) daily.
 
 **Required secrets** (Settings → Secrets and variables → Actions):
 - `SERPAPI_KEY` — SerpApi API key
