@@ -1,0 +1,44 @@
+name: Flight Monitor
+
+on:
+  schedule:
+    # Ejecutar a las 10:00 y 18:00 UTC todos los días
+    - cron: "0 10 * * *"
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    # Permite ejecutar manualmente desde GitHub Actions
+
+jobs:
+  check-flights:
+    name: Check Flight Prices
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Create flights.yaml from secret
+        run: echo "${{ secrets.FLIGHTS_YAML }}" > flights.yaml
+
+      - name: Run flight monitor
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: uv run python -m flight_monitor --once

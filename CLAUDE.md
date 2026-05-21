@@ -43,6 +43,18 @@ The recommended production setup uses `--scheduled` with an hourly cron/launchd 
 - 2 checks/day × 2 flights = 4 API calls/day (~120/month)
 - SerpApi free tier: 100 calls/month → limit to 1 flight or 1 slot/day
 
+## GitHub Actions
+
+The workflow `.github/workflows/monitor.yml` runs automatically at 10:00 and 18:00 UTC daily.
+
+**Required secrets** (Settings → Secrets and variables → Actions):
+- `SERPAPI_KEY` — SerpApi API key
+- `FLIGHTS_YAML` — Contents of your `flights.yaml` file
+- `EMAIL_SENDER`, `EMAIL_PASSWORD`, `EMAIL_RECEIVER` — Gmail credentials (optional)
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram credentials (optional)
+
+**Manual trigger**: Actions → Flight Monitor → Run workflow
+
 ## Architecture
 
 ```
@@ -103,8 +115,8 @@ If Google doesn't return `price_insights` for a route, no recommendation is made
 flights:
   - origin: BOG
     destination: MAD
-    depart_date: "2025-12-01"
-    return_date: "2025-12-15"  # optional
+    depart_date: "2026-12-01"
+    return_date: "2026-12-15"  # optional
     adults: 1                  # optional, default 1
     currency: USD              # optional, default USD
 ```

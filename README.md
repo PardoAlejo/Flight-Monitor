@@ -24,8 +24,8 @@
 
 ```bash
 # 1. Clonar repositorio
-git clone https://github.com/tu-usuario/flight-monitor.git
-cd flight-monitor
+git clone https://github.com/aspardog/Flight-Monitor.git
+cd Flight-Monitor
 
 # 2. Instalar dependencias (requiere UV)
 uv sync
@@ -257,11 +257,11 @@ Cada corrida envia un **resumen** de todos los vuelos monitoreados, no alertas i
 
 ```
 RESUMEN DIARIO DE VUELOS
-Fecha: 2025-12-01 14:30
+Fecha: 2026-12-01 14:30
 ==================================================
 
 VUELO: BOG -> MIA (solo ida)
-  Fecha salida:    2025-12-01
+  Fecha salida:    2026-12-01
   Estado:          OK
   Pasajeros:       1
   Precio total:    USD 400
@@ -330,22 +330,22 @@ flights:
   # Vuelo ida y vuelta
   - origin: BOG              # Codigo IATA aeropuerto origen
     destination: MIA         # Codigo IATA aeropuerto destino
-    depart_date: "2025-12-01"
-    return_date: "2025-12-15"
+    depart_date: "2026-12-01"
+    return_date: "2026-12-15"
     adults: 1
     currency: USD
 
   # Vuelo solo ida
   - origin: BOG
     destination: MAD
-    depart_date: "2025-11-20"
+    depart_date: "2026-11-20"
     adults: 2
     currency: EUR
 
   # Vuelo en moneda local
   - origin: BOG
     destination: LIM
-    depart_date: "2025-09-07"
+    depart_date: "2026-09-07"
     currency: COP
 ```
 
@@ -427,6 +427,41 @@ tail -f monitor.log
 launchctl unload ~/Library/LaunchAgents/com.flight-monitor.plist
 ```
 
+### Configuracion con GitHub Actions (Recomendado)
+
+La forma mas confiable de ejecutar el monitor es usando GitHub Actions. No requiere que tu computadora este encendida.
+
+El workflow `.github/workflows/monitor.yml` se ejecuta automaticamente a las 10:00 y 18:00 UTC todos los dias.
+
+**Configurar secrets en GitHub:**
+
+1. Ve a tu repositorio → Settings → Secrets and variables → Actions
+2. Agrega los siguientes secrets:
+
+| Secret | Descripcion | Requerido |
+|--------|-------------|-----------|
+| `SERPAPI_KEY` | Tu API key de SerpApi | Si |
+| `FLIGHTS_YAML` | Contenido completo de tu `flights.yaml` | Si |
+| `EMAIL_SENDER` | Correo Gmail para enviar | No |
+| `EMAIL_PASSWORD` | App Password de Gmail (16 caracteres) | No |
+| `EMAIL_RECEIVER` | Correo(s) destino, separados por coma | No |
+| `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram | No |
+| `TELEGRAM_CHAT_ID` | Chat ID de Telegram | No |
+
+**Ejemplo de `FLIGHTS_YAML`:**
+
+```yaml
+flights:
+  - origin: BOG
+    destination: MIA
+    depart_date: "2026-12-01"
+    return_date: "2026-12-15"
+    adults: 1
+    currency: USD
+```
+
+**Ejecutar manualmente:** Actions → Flight Monitor → Run workflow
+
 ### Output de Ejemplo
 
 ```
@@ -439,7 +474,7 @@ launchctl unload ~/Library/LaunchAgents/com.flight-monitor.plist
 [DB] Base de datos inicializada: flight_prices.db
 
 ==================================================
-[2025-12-01 14:30 UTC] Chequeando BOG -> MIA (2025-12-01)
+[2026-12-01 14:30 UTC] Chequeando BOG -> MIA (2026-12-01)
 [SerpApi] Categoria de precio: LOW
 [SerpApi] Rango tipico Google: USD 430 - 550
 [SerpApi] Nivel de precio Google: LOW

@@ -11,15 +11,15 @@ flights:
   # Ejemplo 1: Vuelo ida y vuelta
   - origin: BOG           # Codigo IATA origen
     destination: MIA      # Codigo IATA destino
-    depart_date: "2025-12-01"
-    return_date: "2025-12-15"   # Omitir para solo ida
+    depart_date: "2026-12-01"
+    return_date: "2026-12-15"   # Omitir para solo ida
     adults: 1
     currency: USD
 
   # Ejemplo 2: Solo ida
   - origin: BOG
     destination: MAD
-    depart_date: "2025-11-15"
+    depart_date: "2026-11-15"
     adults: 2
     currency: EUR
 
