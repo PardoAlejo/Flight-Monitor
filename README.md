@@ -300,7 +300,7 @@ Cada corrida envia un **resumen** de todos los vuelos monitoreados con formato v
 - 🔗 Links directos a Google Flights
 - 📊 Resumen rapido al inicio
 
-El asunto del email es `🟢 [COMPRAR] Vuelos DD/MM - Precio bajo detectado!` si al menos un vuelo es recomendado.
+El asunto del email es `[COMPRAR] Resumen diario de vuelos - DD/MM/YYYY` si al menos un vuelo es recomendado, o `Resumen diario de vuelos - DD/MM/YYYY` en caso contrario.
 
 ### Formato Telegram
 

@@ -277,12 +277,12 @@ class EmailNotifier(Notifier):
 
         body = "\n".join(lines)
 
-        # Subject with emoji for recommended
-        date_short = now.strftime("%d/%m")
+        # Subject line
+        date_short = now.strftime("%d/%m/%Y")
         if any_recommended:
-            subject = f"🟢 [COMPRAR] Vuelos {date_short} - Precio bajo detectado!"
+            subject = f"[COMPRAR] Resumen diario de vuelos - {date_short}"
         else:
-            subject = f"📊 Resumen vuelos {date_short}"
+            subject = f"Resumen diario de vuelos - {date_short}"
 
         msg = MIMEMultipart()
         msg["From"] = self.sender
