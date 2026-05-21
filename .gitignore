@@ -74,8 +74,9 @@ env/
 ._*
 Thumbs.db
 
-# Testing
+# Testing and Linting
 .pytest_cache/
 .coverage
 htmlcov/
 .mypy_cache/
+.ruff_cache/

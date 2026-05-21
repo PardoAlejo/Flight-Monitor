@@ -642,7 +642,7 @@ client = AmadeusClient(
 ### Comandos
 
 ```bash
-# Instalar dependencias (incluyendo dev)
+# Instalar dependencias
 uv sync
 
 # Ejecutar linter
@@ -650,19 +650,6 @@ uv run ruff check src/
 
 # Ejecutar type checker
 uv run mypy src/
-
-# Ejecutar tests
-uv run pytest
-```
-
-### Estructura de Tests
-
-```bash
-tests/
-├── test_monitor.py      # Tests del orquestador
-├── test_serpapi.py      # Tests del cliente (mocked)
-├── test_storage.py      # Tests de SQLite
-└── test_notifiers.py    # Tests de notificadores
 ```
 
 ---
