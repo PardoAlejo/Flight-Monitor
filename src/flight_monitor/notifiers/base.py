@@ -19,6 +19,8 @@ class FlightOffer:
     return_date: Optional[str] = None
     adults: int = 1  # Number of passengers (for per-person price calculation)
     price_category: str = "other"  # "best" (LOW) or "other"
+    # Flight duration in minutes
+    total_duration: Optional[int] = None  # Total flight time in minutes
     # Price insights from Google Flights
     typical_price_low: Optional[float] = None   # Lower bound of typical range
     typical_price_high: Optional[float] = None  # Upper bound of typical range
@@ -28,6 +30,20 @@ class FlightOffer:
     def price_per_person(self) -> float:
         """Calculate price per person."""
         return self.price / self.adults if self.adults > 0 else self.price
+
+    @property
+    def duration_formatted(self) -> Optional[str]:
+        """Format duration as 'Xh Ym'."""
+        if self.total_duration is None:
+            return None
+        hours = self.total_duration // 60
+        minutes = self.total_duration % 60
+        if hours > 0 and minutes > 0:
+            return f"{hours}h {minutes}m"
+        elif hours > 0:
+            return f"{hours}h"
+        else:
+            return f"{minutes}m"
 
 
 @dataclass

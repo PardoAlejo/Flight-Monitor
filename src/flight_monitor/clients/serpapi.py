@@ -114,6 +114,9 @@ class SerpApiClient:
             # Calculate stops
             stops = len(flights_info) - 1
 
+            # Extract total duration (in minutes)
+            total_duration = cheapest.get("total_duration")
+
             category_label = "LOW" if price_category == "best" else "OTHER"
             print(f"[SerpApi] Categoria de precio: {category_label}")
 
@@ -142,6 +145,7 @@ class SerpApiClient:
                 return_date=flight.return_date,
                 adults=flight.adults,
                 price_category=price_category,
+                total_duration=int(total_duration) if total_duration else None,
                 typical_price_low=float(typical_low) if typical_low else None,
                 typical_price_high=float(typical_high) if typical_high else None,
                 price_level=price_level,

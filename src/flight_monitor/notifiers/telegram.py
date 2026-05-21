@@ -135,9 +135,12 @@ class TelegramNotifier(Notifier):
                 else:
                     lines.append(f"   💰 {offer.currency} {offer.price:,.0f}")
 
-                # Airline
+                # Airline and duration
                 stops = "directo" if offer.stops == 0 else f"{offer.stops} escala(s)"
-                lines.append(f"   🛫 {offer.airline} ({stops})")
+                if offer.duration_formatted:
+                    lines.append(f"   🛫 {offer.airline} • {offer.duration_formatted} • {stops}")
+                else:
+                    lines.append(f"   🛫 {offer.airline} ({stops})")
 
                 # Price comparison
                 if offer.typical_price_low and offer.typical_price_high:
