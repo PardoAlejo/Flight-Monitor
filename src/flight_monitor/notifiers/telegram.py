@@ -7,6 +7,47 @@ import requests
 
 from .base import FlightCheckResult, Notifier
 
+# Spanish day and month names
+DAYS_ES = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
+MONTHS_ES = [
+    "", "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
+]
+
+
+def format_date_spanish(date_str: str) -> str:
+    """Format date as 'Lun 25 May' in Spanish (short version for Telegram)."""
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        day_name = DAYS_ES[dt.weekday()]
+        month_name = MONTHS_ES[dt.month]
+        return f"{day_name} {dt.day} {month_name}"
+    except ValueError:
+        return date_str
+
+
+def calculate_trip_duration(depart_date: str, return_date: str) -> int:
+    """Calculate trip duration in days."""
+    try:
+        depart = datetime.strptime(depart_date, "%Y-%m-%d")
+        ret = datetime.strptime(return_date, "%Y-%m-%d")
+        return (ret - depart).days
+    except ValueError:
+        return 0
+
+
+def get_price_indicator(price_level: Optional[str], recommended: bool) -> str:
+    """Get visual indicator for price level."""
+    if recommended:
+        return "🟢"
+    if price_level == "low":
+        return "🟢"
+    elif price_level == "typical":
+        return "🟡"
+    elif price_level == "high":
+        return "🔴"
+    return "⚪"
+
 
 class TelegramNotifier(Notifier):
     """Send notifications via Telegram Bot API."""
@@ -39,42 +80,86 @@ class TelegramNotifier(Notifier):
         assert self.bot_token is not None
         assert self.chat_id is not None
 
-        today = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now = datetime.now()
+        today_formatted = format_date_spanish(now.strftime("%Y-%m-%d"))
+        time_str = now.strftime("%H:%M")
+
+        # Check if any flight is recommended
+        any_recommended = any(r.recommended for r in results if r.succeeded)
+
         lines = [
-            "✈️ RESUMEN DE VUELOS",
-            f"📅 {today}",
+            "✈️ *RESUMEN DE VUELOS*",
+            f"📅 {today_formatted} • {time_str}",
             "",
         ]
 
         if not results:
-            lines.append("No hubo vuelos para resumir en esta ejecucion.")
-            lines.append("")
+            lines.append("No hubo vuelos para resumir.")
+        else:
+            for result in results:
+                route = f"{result.origin} → {result.destination}"
+                indicator = "⚠️"
 
-        for result in results:
-            route = f"{result.origin} → {result.destination}"
+                if result.succeeded and result.offer:
+                    indicator = get_price_indicator(
+                        result.offer.price_level, result.recommended
+                    )
 
-            lines.append(f"🛫 {route}")
-            lines.append(f"   Fecha: {result.depart_date}")
-            if not result.succeeded or result.offer is None:
-                error_detail = result.error_message or "No se pudo consultar el vuelo"
-                lines.append("   Estado: ERROR")
-                lines.append(f"   Detalle: {error_detail}")
+                lines.append(f"{indicator} *{route}*")
+
+                # Dates
+                depart_fmt = format_date_spanish(result.depart_date)
+                if result.return_date:
+                    return_fmt = format_date_spanish(result.return_date)
+                    duration = calculate_trip_duration(
+                        result.depart_date, result.return_date
+                    )
+                    lines.append(f"   🗓 {depart_fmt} → {return_fmt} ({duration}d)")
+                else:
+                    lines.append(f"   🗓 {depart_fmt} (solo ida)")
+
+                if not result.succeeded or result.offer is None:
+                    error_detail = result.error_message or "Error al consultar"
+                    lines.append(f"   ❌ {error_detail}")
+                    lines.append("")
+                    continue
+
+                offer = result.offer
+
+                # Price
+                if offer.adults > 1:
+                    lines.append(f"   💰 {offer.currency} {offer.price:,.0f} total")
+                    lines.append(
+                        f"   👤 {offer.currency} {offer.price_per_person:,.0f}/persona"
+                    )
+                else:
+                    lines.append(f"   💰 {offer.currency} {offer.price:,.0f}")
+
+                # Airline
+                stops = "directo" if offer.stops == 0 else f"{offer.stops} escala(s)"
+                lines.append(f"   🛫 {offer.airline} ({stops})")
+
+                # Price comparison
+                if offer.typical_price_low and offer.typical_price_high:
+                    if result.discount_pct > 0:
+                        lines.append(f"   📉 {result.discount_pct:.0f}% bajo típico 🎉")
+                    else:
+                        lines.append(f"   📈 {abs(result.discount_pct):.0f}% sobre típico")
+
+                # Recommendation
+                if result.recommended:
+                    lines.append("   ✅ *COMPRAR AHORA*")
+                else:
+                    lines.append("   ⏳ Esperar mejor precio")
+
                 lines.append("")
-                continue
 
-            offer = result.offer
-            if offer.adults > 1:
-                lines.append(f"   Total: {offer.currency} {offer.price:,.0f}")
-                lines.append(f"   Por persona: {offer.currency} {offer.price_per_person:,.0f}")
-            else:
-                lines.append(f"   Precio: {offer.currency} {offer.price:,.0f}")
-            lines.append(f"   Aerolínea: {offer.airline}")
-
-            if result.recommended:
-                lines.append("   ✅ RECOMENDADO COMPRAR")
-            else:
-                lines.append("   ⏳ Esperar mejor precio")
+        # Footer
+        if any_recommended:
+            lines.append("🔔 *¡Hay vuelos recomendados para comprar!*")
             lines.append("")
+
+        lines.append("🔍 google.com/flights")
 
         text = "\n".join(lines)
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
@@ -82,7 +167,11 @@ class TelegramNotifier(Notifier):
         try:
             resp = requests.post(
                 url,
-                json={"chat_id": self.chat_id, "text": text},
+                json={
+                    "chat_id": self.chat_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                },
                 timeout=self.timeout,
             )
             if resp.ok:
