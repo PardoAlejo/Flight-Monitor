@@ -1,5 +1,6 @@
 """SerpApi client for Google Flights searches."""
 
+from dataclasses import dataclass
 from typing import Optional
 
 import requests
@@ -8,10 +9,33 @@ from ..config import FlightConfig
 from ..notifiers.base import FlightOffer
 
 
+@dataclass(frozen=True)
+class SerpApiAccountStatus:
+    """Current SerpApi quota and usage summary."""
+
+    plan_name: Optional[str]
+    plan_monthly_price: Optional[float]
+    searches_per_month: Optional[int]
+    plan_searches_left: Optional[int]
+    extra_credits: Optional[int]
+    total_searches_left: Optional[int]
+    this_month_usage: Optional[int]
+    last_hour_searches: Optional[int]
+    account_rate_limit_per_hour: Optional[int]
+
+    @property
+    def remaining_searches(self) -> Optional[int]:
+        """Return the best available remaining-search count."""
+        if self.total_searches_left is not None:
+            return self.total_searches_left
+        return self.plan_searches_left
+
+
 class SerpApiClient:
     """Client for querying flight prices from Google Flights via SerpApi."""
 
     BASE_URL = "https://serpapi.com/search"
+    ACCOUNT_URL = "https://serpapi.com/account.json"
 
     def __init__(self, api_key: str):
         """
@@ -25,6 +49,67 @@ class SerpApiClient:
     def _sanitize_error(self, error: Exception) -> str:
         """Remove secrets from exception messages before logging them."""
         return str(error).replace(self.api_key, "***REDACTED***")
+
+    def fetch_account_status(self) -> Optional[SerpApiAccountStatus]:
+        """Fetch the current SerpApi account usage and remaining quota."""
+        try:
+            response = requests.get(
+                self.ACCOUNT_URL,
+                params={"api_key": self.api_key},
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            return SerpApiAccountStatus(
+                plan_name=data.get("plan_name"),
+                plan_monthly_price=(
+                    float(data["plan_monthly_price"])
+                    if data.get("plan_monthly_price") is not None
+                    else None
+                ),
+                searches_per_month=(
+                    int(data["searches_per_month"])
+                    if data.get("searches_per_month") is not None
+                    else None
+                ),
+                plan_searches_left=(
+                    int(data["plan_searches_left"])
+                    if data.get("plan_searches_left") is not None
+                    else None
+                ),
+                extra_credits=(
+                    int(data["extra_credits"])
+                    if data.get("extra_credits") is not None
+                    else None
+                ),
+                total_searches_left=(
+                    int(data["total_searches_left"])
+                    if data.get("total_searches_left") is not None
+                    else None
+                ),
+                this_month_usage=(
+                    int(data["this_month_usage"])
+                    if data.get("this_month_usage") is not None
+                    else None
+                ),
+                last_hour_searches=(
+                    int(data["last_hour_searches"])
+                    if data.get("last_hour_searches") is not None
+                    else None
+                ),
+                account_rate_limit_per_hour=(
+                    int(data["account_rate_limit_per_hour"])
+                    if data.get("account_rate_limit_per_hour") is not None
+                    else None
+                ),
+            )
+        except requests.exceptions.RequestException as e:
+            print(f"[SerpApi] Error consultando cuota: {self._sanitize_error(e)}")
+            return None
+        except (KeyError, ValueError, TypeError) as e:
+            print(f"[SerpApi] Error procesando cuota: {e}")
+            return None
 
     def fetch_cheapest_offer(self, flight: FlightConfig) -> Optional[FlightOffer]:
         """

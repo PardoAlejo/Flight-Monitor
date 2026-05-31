@@ -25,6 +25,7 @@ class AppConfig:
     """Application-wide configuration."""
     # SerpApi
     serpapi_key: str
+    serpapi_min_searches_left: int = 5
 
     # Email notifications
     email_sender: Optional[str] = None
@@ -41,7 +42,7 @@ class AppConfig:
     # Monitoring
     check_interval_minutes: int = 60
     retry_delay_minutes: int = 60
-    scheduled_times: list[str] = field(default_factory=lambda: ["10:00", "15:30"])
+    scheduled_times: list[str] = field(default_factory=lambda: ["11:00"])
     scheduler_state_path: str = ".flight_monitor_scheduler.json"
 
     # Flights to monitor
@@ -93,7 +94,7 @@ def load_config(env_path: Optional[Path] = None, flights_path: Optional[Path] = 
     # Load flights from YAML
     flights_file = flights_path or Path("flights.yaml")
     flights = load_flights_from_yaml(flights_file)
-    scheduled_times_raw = os.getenv("SCHEDULED_TIMES", "10:00,15:30")
+    scheduled_times_raw = os.getenv("SCHEDULED_TIMES", "11:00")
     scheduled_times = [item.strip() for item in scheduled_times_raw.split(",") if item.strip()]
 
     # If no flights.yaml, check for single flight in env vars (backwards compatibility)
@@ -114,6 +115,7 @@ def load_config(env_path: Optional[Path] = None, flights_path: Optional[Path] = 
 
     return AppConfig(
         serpapi_key=os.getenv("SERPAPI_KEY", ""),
+        serpapi_min_searches_left=int(os.getenv("SERPAPI_MIN_SEARCHES_LEFT", "5")),
         email_sender=os.getenv("EMAIL_SENDER"),
         email_password=os.getenv("EMAIL_PASSWORD"),
         email_receiver=os.getenv("EMAIL_RECEIVER"),

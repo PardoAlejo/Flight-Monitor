@@ -43,6 +43,33 @@ def main() -> None:
 
     # Initialize components
     client = SerpApiClient(config.serpapi_key)
+
+    account_status = client.fetch_account_status()
+    if account_status is None:
+        print("[Error] No se pudo verificar la cuota de SerpApi. Se detiene para evitar consumo.")
+        raise SystemExit(1)
+
+    remaining_searches = account_status.remaining_searches
+    if remaining_searches is None:
+        print("[Error] SerpApi no devolvio cuota restante. Se detiene para evitar consumo.")
+        raise SystemExit(1)
+
+    if remaining_searches <= config.serpapi_min_searches_left:
+        plan_name = account_status.plan_name or "plan desconocido"
+        print(
+            "[Error] Cuota SerpApi baja: "
+            f"{remaining_searches} restantes en {plan_name}. "
+            f"Umbral configurado: {config.serpapi_min_searches_left}. "
+            "Se detiene para evitar consumo adicional."
+        )
+        raise SystemExit(1)
+
+    print(
+        "[SerpApi] Cuota disponible: "
+        f"{remaining_searches} búsquedas restantes "
+        f"(umbral: {config.serpapi_min_searches_left})."
+    )
+
     storage = SQLiteStorage(config.db_path)
 
     # Initialize notifiers

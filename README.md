@@ -15,7 +15,7 @@
 - **Alertas precisas**: Recomienda comprar cuando el precio esta **por debajo del rango tipico de Google Flights**
 - **Notificaciones flexibles**: Soporte para Email (Gmail SMTP) y Telegram Bot (multiples destinatarios)
 - **Persistencia**: Almacena todo el historial de precios en SQLite para analisis
-- **Optimizado para API limitada**: Disenado para el plan gratuito de SerpApi (100 llamadas/mes)
+- **Optimizado para API limitada**: Disenado para el plan gratuito de SerpApi (250 llamadas/mes)
 - **Modo cron/launchd**: Flags `--once` y `--scheduled` (con reintentos automaticos) para tareas programadas
 
 ---
@@ -357,7 +357,8 @@ TELEGRAM_CHAT_ID=tu_chat_id_aqui
 # ═══════════════════════════════════════════════════════════════
 DB_PATH=flight_prices.db             # Ruta base de datos SQLite
 CHECK_INTERVAL_MINUTES=60            # Intervalo en modo continuo
-SCHEDULED_TIMES=10:00,15:30          # Horarios base para modo programado
+SCHEDULED_TIMES=11:00                # Horario base para modo programado
+SERPAPI_MIN_SEARCHES_LEFT=5          # Umbral para detenerse antes de agotar cuota
 RETRY_DELAY_MINUTES=60               # Reintento cuando falle una corrida
 SCHEDULER_STATE_PATH=.flight_monitor_scheduler.json
 ```
@@ -366,7 +367,7 @@ SCHEDULER_STATE_PATH=.flight_monitor_scheduler.json
 
 | Servicio | Como obtener |
 |----------|--------------|
-| SerpApi | [serpapi.com](https://serpapi.com) - 100 busquedas gratis/mes |
+| SerpApi | [serpapi.com](https://serpapi.com) - 250 busquedas gratis/mes |
 | Gmail App Password | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
 | Telegram Bot | [@BotFather](https://t.me/botfather) para token, [@userinfobot](https://t.me/userinfobot) para chat_id |
 
@@ -392,7 +393,7 @@ flights:
   # Vuelo en moneda local
   - origin: BOG
     destination: LIM
-    depart_date: "2026-09-07"
+    depart_date: "2026-09-14"
     currency: COP
 ```
 
@@ -444,19 +445,19 @@ que `--scheduled` decida si hay una corrida pendiente:
 # Editar crontab
 crontab -e
 
-# Ejemplo: revisar cada hora y ejecutar solo a las 6:00, 18:00 o sus reintentos
+# Ejemplo: revisar cada hora y ejecutar solo a las 11:00 o sus reintentos
 0 * * * * cd /ruta/a/flight-monitor && uv run python -m flight_monitor --scheduled >> monitor.log 2>&1
 ```
 
-Con `SCHEDULED_TIMES=06:00,18:00`:
+Con `SCHEDULED_TIMES=11:00`:
 
-- si la corrida de las 06:00 no sucede, la de las 07:00 la recupera
-- si la corrida de las 06:00 falla por red, la de las 07:00 la vuelve a intentar
-- una vez la corrida termina bien, no se repite hasta el siguiente horario base
+- si la corrida de las 11:00 no sucede, la siguiente invocacion horaria la recupera
+- si la corrida de las 11:00 falla por red, la siguiente invocacion horaria la vuelve a intentar
+- una vez la corrida termina bien, no se repite hasta el siguiente dia
 
 ### Configuracion con launchd (macOS)
 
-El directorio `launchd/` incluye una plantilla para `launchd` (el equivalente a cron en macOS). Se ejecuta cada hora al minuto 0:
+El directorio `launchd/` incluye una plantilla para `launchd` (el equivalente a cron en macOS). Se ejecuta una vez al dia a las 11:00:
 
 ```bash
 # Crear una copia local y ajustar la ruta del proyecto
@@ -478,7 +479,9 @@ launchctl unload ~/Library/LaunchAgents/com.flight-monitor.plist
 
 La forma mas confiable de ejecutar el monitor es usando GitHub Actions. No requiere que tu computadora este encendida.
 
-El workflow `.github/workflows/monitor.yml` se ejecuta automaticamente a las 11:00 AM y 4:00 PM hora Colombia (16:00 y 21:00 UTC) todos los dias.
+El workflow `.github/workflows/monitor.yml` se ejecuta automaticamente a las 11:00 AM hora Colombia (16:00 UTC) todos los dias.
+
+Antes de consultar vuelos, el programa llama al Account API de SerpApi para verificar cuantas búsquedas quedan. Si la cuota restante cae por debajo de `SERPAPI_MIN_SEARCHES_LEFT`, la ejecución se corta antes de gastar más búsquedas.
 
 **Configurar secrets en GitHub:**
 
@@ -666,7 +669,7 @@ client = AmadeusClient(
 
 ## Optimizacion de API
 
-### Plan Gratuito SerpApi: 100 llamadas/mes
+### Plan Gratuito SerpApi: 250 llamadas/mes
 
 | Vuelos | Chequeos/dia | Llamadas/mes | Status |
 |--------|--------------|--------------|--------|
@@ -674,7 +677,10 @@ client = AmadeusClient(
 | 1 | 2 | 60 | OK |
 | 1 | 3 | 90 | OK |
 | 2 | 1 | 60 | OK |
-| 2 | 2 | 120 | Excede limite |
+| 2 | 2 | 120 | OK |
+| 3 | 2 | 180 | OK |
+| 4 | 2 | 240 | OK |
+| 5 | 2 | 300 | Excede limite |
 
 ### Recomendaciones
 
