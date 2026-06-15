@@ -72,11 +72,13 @@ class TelegramNotifier(Notifier):
         timeout: int = 10,
     ):
         self.bot_token = bot_token
-        self.chat_id = chat_id
+        self.chat_ids: list[str] = []
+        if chat_id:
+            self.chat_ids = [c.strip() for c in chat_id.split(",") if c.strip()]
         self.timeout = timeout
 
     def is_configured(self) -> bool:
-        return bool(self.bot_token and self.chat_id)
+        return bool(self.bot_token and self.chat_ids)
 
     def _sanitize_error(self, error: Exception) -> str:
         """Remove bot token from exception messages before logging them."""
@@ -91,7 +93,6 @@ class TelegramNotifier(Notifier):
             return False
 
         assert self.bot_token is not None
-        assert self.chat_id is not None
 
         now = datetime.now()
         today_formatted = format_date_spanish(now.strftime("%Y-%m-%d"))
@@ -212,22 +213,24 @@ class TelegramNotifier(Notifier):
         text = "\n".join(lines)
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
 
-        try:
-            resp = requests.post(
-                url,
-                json={
-                    "chat_id": self.chat_id,
-                    "text": text,
-                    "parse_mode": "Markdown",
-                },
-                timeout=self.timeout,
-            )
-            if resp.ok:
-                print("[Telegram] Resumen enviado.")
-                return True
-            else:
-                print(f"[Telegram] Error: {resp.text}")
-                return False
-        except Exception as e:
-            print(f"[Telegram] Error de conexion: {self._sanitize_error(e)}")
-            return False
+        all_ok = True
+        for chat_id in self.chat_ids:
+            try:
+                resp = requests.post(
+                    url,
+                    json={
+                        "chat_id": chat_id,
+                        "text": text,
+                        "parse_mode": "Markdown",
+                    },
+                    timeout=self.timeout,
+                )
+                if resp.ok:
+                    print(f"[Telegram] Resumen enviado a {chat_id}.")
+                else:
+                    print(f"[Telegram] Error ({chat_id}): {resp.text}")
+                    all_ok = False
+            except Exception as e:
+                print(f"[Telegram] Error de conexion ({chat_id}): {self._sanitize_error(e)}")
+                all_ok = False
+        return all_ok
