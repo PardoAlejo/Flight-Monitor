@@ -10,22 +10,25 @@ Flight Monitor tracks flight prices using Google Flights (via SerpApi) and sends
 
 ```bash
 # Sync dependencies (creates venv automatically)
-uv sync
+uv sync --locked --no-editable
 
 # Run the monitor (continuous mode)
-uv run python -m flight_monitor
+uv run --no-editable python -m flight_monitor
 
 # Run single check and exit (for cron)
-uv run python -m flight_monitor --once
+uv run --no-editable python -m flight_monitor --once
 
 # Run only when a scheduled slot or retry window is due
-uv run python -m flight_monitor --scheduled
+uv run --no-editable python -m flight_monitor --scheduled
 
 # Run linter
-uv run ruff check src/
+uv run --no-editable ruff check src/
 
 # Run type checker
-uv run mypy src/
+uv run --no-editable mypy src/
+
+# Run functional tests without external API calls
+uv run --no-editable python -m unittest discover -s tests -v
 ```
 
 ## Scheduled Execution
@@ -34,18 +37,22 @@ The recommended production setup uses `--scheduled` with an hourly cron/launchd 
 
 ```bash
 # cron: run every hour, execute only at 10:00, 15:30 or their retries
-0 * * * * cd /path/to/Flight-Monitor && uv run python -m flight_monitor --scheduled >> monitor.log 2>&1
+0 * * * * cd /path/to/Flight-Monitor && uv run --no-editable python -m flight_monitor --scheduled >> monitor.log 2>&1
 ```
 
 **macOS launchd**: use `launchd/com.flight-monitor.plist.example` as a template for an hourly LaunchAgent.
 
 **API usage with 2 flights and 2 slots/day:**
 - 2 checks/day × 2 flights = 4 API calls/day (~120/month)
-- SerpApi free tier: 100 calls/month → limit to 1 flight or 1 slot/day
+- SerpApi free tier: 250 searches/month as of June 2026
 
 ## GitHub Actions
 
-The workflow `.github/workflows/monitor.yml` runs automatically at 11:00 AM and 4:00 PM Colombia time (16:00 and 21:00 UTC) daily.
+The workflow `.github/workflows/monitor.yml` runs automatically at 11:00 AM Colombia
+time (16:00 UTC) daily.
+
+The workflow `.github/workflows/ci.yml` runs Ruff, mypy, and the functional test suite on
+pushes to `main` and pull requests.
 
 **Required secrets** (Settings → Secrets and variables → Actions):
 - `SERPAPI_KEY` — SerpApi API key
@@ -116,7 +123,8 @@ If Google doesn't return `price_insights` for a route, no recommendation is made
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — Telegram bot (optional)
 - `DB_PATH` — SQLite database path (default: `flight_prices.db`)
 - `CHECK_INTERVAL_MINUTES` — interval for continuous mode (default: 60)
-- `SCHEDULED_TIMES` — comma-separated HH:MM slots for `--scheduled` (default: `10:00,15:30`)
+- `SCHEDULED_TIMES` — comma-separated HH:MM slots for `--scheduled` (default: `11:00`)
+- `SERPAPI_MIN_SEARCHES_LEFT` — stop before searches reach this threshold (default: 5)
 - `RETRY_DELAY_MINUTES` — wait before retrying a failed slot (default: 60)
 - `SCHEDULER_STATE_PATH` — JSON state file for scheduler (default: `.flight_monitor_scheduler.json`)
 

@@ -27,7 +27,7 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --locked --no-editable
 
       - name: Create flights.yaml from secret
         run: echo "${{ secrets.FLIGHTS_YAML }}" > flights.yaml
@@ -40,4 +40,4 @@ jobs:
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: uv run python -m flight_monitor --once
+        run: uv run --no-editable python -m flight_monitor --once

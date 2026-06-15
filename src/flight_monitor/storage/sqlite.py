@@ -1,7 +1,7 @@
 """SQLite storage backend for price history."""
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..notifiers.base import FlightOffer, PriceRecord
 
@@ -57,7 +57,7 @@ class SQLiteStorage:
         Args:
             offer: The flight offer to record
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._get_connection() as conn:
             conn.execute(
                 """

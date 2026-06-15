@@ -2,7 +2,7 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Protocol
 
 from .config import AppConfig, FlightConfig
@@ -89,7 +89,7 @@ class FlightMonitor:
         Returns:
             FlightCheckResult with offer details or failure metadata
         """
-        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         route = f"{flight.origin} -> {flight.destination}"
         print(f"\n{'='*50}")
         print(f"[{now}] Chequeando {route} ({flight.depart_date})")

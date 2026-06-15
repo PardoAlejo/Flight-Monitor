@@ -17,6 +17,7 @@
 - **Persistencia**: Almacena todo el historial de precios en SQLite para analisis
 - **Optimizado para API limitada**: Disenado para el plan gratuito de SerpApi (250 llamadas/mes)
 - **Modo cron/launchd**: Flags `--once` y `--scheduled` (con reintentos automaticos) para tareas programadas
+- **Verificacion automatica**: CI con Ruff, mypy estricto y pruebas funcionales sin consumo de API
 
 ---
 
@@ -28,7 +29,7 @@ git clone https://github.com/aspardog/Flight-Monitor.git
 cd Flight-Monitor
 
 # 2. Instalar dependencias (requiere UV)
-uv sync
+uv sync --locked --no-editable
 
 # 3. Configurar credenciales
 cp .env.example .env
@@ -38,7 +39,7 @@ cp .env.example .env
 # Crea flights.yaml con tus rutas (ver seccion Configuracion > Vuelos)
 
 # 5. Ejecutar
-uv run python -m flight_monitor --once
+uv run --no-editable python -m flight_monitor --once
 ```
 
 ---
@@ -404,7 +405,7 @@ flights:
 ### Modo Unico (Recomendado)
 
 ```bash
-uv run python -m flight_monitor --once
+uv run --no-editable python -m flight_monitor --once
 ```
 
 Ejecuta un solo chequeo de todos los vuelos y termina. Ideal para **cron jobs**.
@@ -414,7 +415,7 @@ Si falla alguna consulta o el envio del resumen, el proceso termina con codigo d
 ### Modo Programado con Reintentos
 
 ```bash
-uv run python -m flight_monitor --scheduled
+uv run --no-editable python -m flight_monitor --scheduled
 ```
 
 Este modo consulta el archivo de estado y solo corre cuando:
@@ -431,7 +432,7 @@ Sirve para recuperarse de dos casos:
 ### Modo Continuo
 
 ```bash
-uv run python -m flight_monitor
+uv run --no-editable python -m flight_monitor
 ```
 
 Ejecuta chequeos en loop segun `CHECK_INTERVAL_MINUTES`.
@@ -446,7 +447,7 @@ que `--scheduled` decida si hay una corrida pendiente:
 crontab -e
 
 # Ejemplo: revisar cada hora y ejecutar solo a las 11:00 o sus reintentos
-0 * * * * cd /ruta/a/flight-monitor && uv run python -m flight_monitor --scheduled >> monitor.log 2>&1
+0 * * * * cd /ruta/a/flight-monitor && uv run --no-editable python -m flight_monitor --scheduled >> monitor.log 2>&1
 ```
 
 Con `SCHEDULED_TIMES=11:00`:
@@ -695,15 +696,35 @@ client = AmadeusClient(
 ### Comandos
 
 ```bash
-# Instalar dependencias
-uv sync
+# Instalar exactamente las dependencias del lockfile
+uv sync --locked --all-groups --no-editable
 
 # Ejecutar linter
-uv run ruff check src/
+uv run --no-editable ruff check .
 
 # Ejecutar type checker
-uv run mypy src/
+uv run --no-editable mypy src/
+
+# Ejecutar pruebas funcionales locales
+uv run --no-editable python -m unittest discover -s tests -v
 ```
+
+Las pruebas usan respuestas simuladas de SerpApi y una base SQLite temporal. Validan:
+
+- lectura de cuota y parseo de ofertas de SerpApi
+- seleccion de la oferta mas barata y calculo por persona
+- recomendacion de compra, persistencia SQLite y resumen
+- manejo de consultas fallidas
+- reintentos y cierre de ventanas del scheduler
+
+No consumen cuota de SerpApi ni envian email o mensajes de Telegram.
+
+El workflow `.github/workflows/ci.yml` ejecuta estos controles en cada push a `main` y en
+cada pull request.
+
+El proyecto usa `uv_build`. Los comandos incluyen `--no-editable` para evitar que Python
+omita archivos `.pth` marcados como ocultos en algunos entornos macOS. UV reinstala el
+paquete cuando detecta cambios locales.
 
 ---
 
@@ -744,6 +765,10 @@ Crea `flights.yaml` basado en `flights.yaml.example`.
 1. Verifica que usas un **App Password** de Gmail, no tu contrasena normal
 2. Revisa que `EMAIL_SENDER`, `EMAIL_PASSWORD` y `EMAIL_RECEIVER` esten configurados
 3. Revisa la carpeta de spam
+
+Si Gmail responde `535 Username and Password not accepted`, genera una App Password nueva,
+actualiza `EMAIL_PASSWORD` y vuelve a ejecutar. La contrasena normal de la cuenta no funciona
+con este cliente SMTP.
 
 ### No llegan mensajes de Telegram
 
