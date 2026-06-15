@@ -111,6 +111,23 @@ class SerpApiClient:
             print(f"[SerpApi] Error procesando cuota: {e}")
             return None
 
+    @staticmethod
+    def _has_excluded_layover(
+        flight_data: dict[str, object], excluded: set[str]
+    ) -> bool:
+        """Check if a flight routes through any excluded layover airport."""
+        segments = flight_data.get("flights", [])
+        if not isinstance(segments, list) or len(segments) <= 1:
+            return False
+        # Check intermediate airports (skip first departure and last arrival)
+        for seg in segments[:-1]:
+            if not isinstance(seg, dict):
+                continue
+            arrival = seg.get("arrival_airport", {})
+            if isinstance(arrival, dict) and arrival.get("id") in excluded:
+                return True
+        return False
+
     def fetch_cheapest_offer(self, flight: FlightConfig) -> Optional[FlightOffer]:
         """
         Query Google Flights via SerpApi and return the cheapest flight found.
@@ -149,6 +166,18 @@ class SerpApiClient:
             # Get best flights (LOW category) and other flights
             best_flights = data.get("best_flights", [])
             other_flights = data.get("other_flights", [])
+
+            # Filter out flights with excluded layover airports
+            excluded = set(flight.exclude_layover_airports)
+            if excluded:
+                best_flights = [
+                    f for f in best_flights
+                    if not self._has_excluded_layover(f, excluded)
+                ]
+                other_flights = [
+                    f for f in other_flights
+                    if not self._has_excluded_layover(f, excluded)
+                ]
 
             if not best_flights and not other_flights:
                 print(f"[SerpApi] No hay vuelos {flight.origin}->{flight.destination}")

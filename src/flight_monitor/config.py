@@ -20,6 +20,7 @@ class FlightConfig:
     currency: str = "USD"
     date_flexibility: int = 0  # Search N days around depart_date
     flexibility_direction: str = "both"  # "both" (±N) or "forward" (+N only)
+    exclude_layover_airports: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -73,6 +74,7 @@ def load_flights_from_yaml(path: Path) -> list[FlightConfig]:
             currency=flight_data.get("currency", "USD"),
             date_flexibility=flight_data.get("date_flexibility", 0),
             flexibility_direction=flight_data.get("flexibility_direction", "both"),
+            exclude_layover_airports=flight_data.get("exclude_layover_airports", []),
         ))
 
     return flights
