@@ -1,7 +1,7 @@
 """Base protocol and utilities for notification plugins."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -47,6 +47,16 @@ class FlightOffer:
 
 
 @dataclass
+class DateAlternative:
+    """A price found for an alternative departure date."""
+    depart_date: str
+    return_date: Optional[str]
+    price: float
+    currency: str
+    is_cheapest: bool = False
+
+
+@dataclass
 class PriceRecord:
     """Represents a historical price record."""
     price: float
@@ -67,11 +77,25 @@ class FlightCheckResult:
     discount_pct: float = 0.0  # Percentage below typical_price_low
     recommended: bool = False  # True if price is below typical_price_low
     error_message: Optional[str] = None
+    date_alternatives: list[DateAlternative] = field(default_factory=list)
+    trend: Optional["TrendInfo"] = None
 
     @property
     def succeeded(self) -> bool:
         """Return whether the flight check produced a valid offer."""
         return self.offer is not None and self.error_message is None
+
+
+@dataclass
+class TrendInfo:
+    """Price trend signals computed from historical data."""
+    price_change: Optional[float] = None       # vs previous check (negative = cheaper)
+    price_change_pct: Optional[float] = None   # percentage change vs previous
+    is_all_time_low: bool = False               # lowest price ever seen for this route
+    vs_avg_pct: Optional[float] = None         # % below/above hist. avg (negative = cheaper)
+    historical_min: Optional[float] = None     # all-time lowest price
+    historical_avg: Optional[float] = None     # historical average price
+    record_count: int = 0                      # how many data points we have
 
 
 class Notifier(ABC):

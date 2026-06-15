@@ -2,12 +2,12 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Protocol
 
 from .config import AppConfig, FlightConfig
-from .notifiers.base import FlightCheckResult, FlightOffer, Notifier
-from .storage.sqlite import SQLiteStorage
+from .notifiers.base import DateAlternative, FlightCheckResult, FlightOffer, Notifier, TrendInfo
+from .storage.sqlite import PriceStats, SQLiteStorage
 
 
 class FlightClient(Protocol):
@@ -79,6 +79,194 @@ class FlightMonitor:
 
         return should_buy, discount_pct
 
+    @staticmethod
+    def compute_trend(price: float, stats: Optional[PriceStats]) -> Optional[TrendInfo]:
+        """Build TrendInfo from current price and historical stats."""
+        if stats is None or stats.record_count == 0:
+            return None
+
+        trend = TrendInfo(record_count=stats.record_count)
+        trend.historical_min = stats.min_price
+        trend.historical_avg = stats.avg_price
+
+        # vs previous check
+        if stats.previous_price is not None:
+            trend.price_change = price - stats.previous_price
+            if stats.previous_price > 0:
+                trend.price_change_pct = (
+                    (price - stats.previous_price) / stats.previous_price
+                ) * 100
+
+        # vs average
+        if stats.avg_price > 0:
+            trend.vs_avg_pct = ((price - stats.avg_price) / stats.avg_price) * 100
+
+        # all-time low (strictly less than any previously recorded price)
+        trend.is_all_time_low = price < stats.min_price
+
+        return trend
+
+    def _get_trend(self, offer: FlightOffer) -> Optional[TrendInfo]:
+        """Query history and compute trend for an offer."""
+        stats = self.storage.get_price_stats(
+            offer.origin, offer.destination, offer.depart_date
+        )
+        return self.compute_trend(offer.price, stats)
+
+    def _print_trend(self, trend: Optional[TrendInfo], currency: str) -> None:
+        """Print trend info to console."""
+        if trend is None or trend.record_count == 0:
+            return
+
+        parts = []
+        if trend.price_change is not None and trend.price_change != 0:
+            direction = "↓" if trend.price_change < 0 else "↑"
+            parts.append(
+                f"{direction} {currency} {abs(trend.price_change):,.0f} vs anterior"
+            )
+        if trend.vs_avg_pct is not None:
+            if trend.vs_avg_pct < 0:
+                parts.append(f"{abs(trend.vs_avg_pct):.0f}% bajo promedio historico")
+            else:
+                parts.append(f"{trend.vs_avg_pct:.0f}% sobre promedio historico")
+        if trend.is_all_time_low:
+            parts.append("MINIMO HISTORICO")
+
+        if parts:
+            print(f"[Tendencia] {' | '.join(parts)} ({trend.record_count} registros)")
+
+    @staticmethod
+    def expand_dates(flight: FlightConfig) -> list[FlightConfig]:
+        """
+        Expand a flight config into multiple configs for each date variant.
+
+        Shifts depart_date by -N to +N days (where N = date_flexibility),
+        keeping trip duration constant (return_date shifts by the same offset).
+        """
+        if flight.date_flexibility <= 0:
+            return [flight]
+
+        base_depart = datetime.strptime(flight.depart_date, "%Y-%m-%d")
+        trip_days: int | None = None
+        if flight.return_date:
+            base_return = datetime.strptime(flight.return_date, "%Y-%m-%d")
+            trip_days = (base_return - base_depart).days
+
+        variants: list[FlightConfig] = []
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        for offset in range(-flight.date_flexibility, flight.date_flexibility + 1):
+            new_depart = base_depart + timedelta(days=offset)
+            # Skip dates in the past
+            if new_depart < today:
+                continue
+
+            new_return: str | None = None
+            if trip_days is not None:
+                new_return = (new_depart + timedelta(days=trip_days)).strftime("%Y-%m-%d")
+
+            variants.append(FlightConfig(
+                origin=flight.origin,
+                destination=flight.destination,
+                depart_date=new_depart.strftime("%Y-%m-%d"),
+                return_date=new_return,
+                adults=flight.adults,
+                currency=flight.currency,
+                date_flexibility=0,  # Don't re-expand
+            ))
+
+        return variants
+
+    def _check_date_variants(self, flight: FlightConfig) -> FlightCheckResult:
+        """
+        Check all date variants for a flight and return the best result.
+
+        Searches ±date_flexibility days around the configured dates,
+        picks the cheapest offer, and includes a date-price comparison.
+        """
+        variants = self.expand_dates(flight)
+        route = f"{flight.origin} -> {flight.destination}"
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        print(f"\n{'='*50}")
+        print(
+            f"[{now}] Chequeando {route} ({flight.depart_date}) "
+            f"± {flight.date_flexibility} dias ({len(variants)} fechas)"
+        )
+
+        # Search all date variants
+        offers: list[tuple[FlightConfig, FlightOffer]] = []
+        for variant in variants:
+            offer = self.client.fetch_cheapest_offer(variant)
+            if offer is not None:
+                offers.append((variant, offer))
+                self.storage.insert_price(offer)
+                print(
+                    f"  [{variant.depart_date}] {offer.currency} {offer.price:,.0f} "
+                    f"({offer.airline})"
+                )
+            else:
+                print(f"  [{variant.depart_date}] Sin resultados")
+
+        if not offers:
+            print(f"[Monitor] No se encontraron vuelos para ninguna fecha en {route}")
+            return FlightCheckResult(
+                origin=flight.origin,
+                destination=flight.destination,
+                depart_date=flight.depart_date,
+                return_date=flight.return_date,
+                error_message="No se encontraron vuelos en ninguna fecha del rango.",
+            )
+
+        # Find cheapest
+        best_variant, best_offer = min(offers, key=lambda x: x[1].price)
+
+        # Build date alternatives list
+        date_alternatives = [
+            DateAlternative(
+                depart_date=v.depart_date,
+                return_date=v.return_date,
+                price=o.price,
+                currency=o.currency,
+                is_cheapest=(v.depart_date == best_variant.depart_date),
+            )
+            for v, o in sorted(offers, key=lambda x: x[0].depart_date)
+        ]
+
+        print(
+            f"[Monitor] Mejor fecha: {best_variant.depart_date} "
+            f"- {best_offer.currency} {best_offer.price:,.0f}"
+        )
+
+        # Compute trend for the best offer's date
+        trend = self._get_trend(best_offer)
+
+        # Evaluate recommendation on best offer
+        should_buy, discount_pct = self.should_recommend(best_offer)
+
+        if best_offer.typical_price_low:
+            if discount_pct > 0:
+                print(f"[Monitor] Precio {discount_pct:.1f}% POR DEBAJO del rango tipico")
+            else:
+                print(f"[Monitor] Precio {abs(discount_pct):.1f}% por encima del rango tipico")
+            if should_buy:
+                print("[Monitor] *** RECOMENDADO COMPRAR ***")
+            else:
+                print("[Monitor] Esperar mejor precio")
+
+        self._print_trend(trend, best_offer.currency)
+
+        return FlightCheckResult(
+            origin=flight.origin,
+            destination=flight.destination,
+            depart_date=best_offer.depart_date,
+            return_date=best_offer.return_date,
+            offer=best_offer,
+            discount_pct=discount_pct,
+            recommended=should_buy,
+            date_alternatives=date_alternatives,
+            trend=trend,
+        )
+
     def check_flight(self, flight: FlightConfig) -> FlightCheckResult:
         """
         Check price for a single flight.
@@ -89,6 +277,10 @@ class FlightMonitor:
         Returns:
             FlightCheckResult with offer details or failure metadata
         """
+        # Delegate to date-variant search when flexibility is configured
+        if flight.date_flexibility > 0:
+            return self._check_date_variants(flight)
+
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         route = f"{flight.origin} -> {flight.destination}"
         print(f"\n{'='*50}")
@@ -120,10 +312,13 @@ class FlightMonitor:
                 f"({offer.airline}, {offer.stops} escala(s)) [{category_label}]"
             )
 
-        # 2. Save to history
+        # 2. Compute trend from history (before saving current price)
+        trend = self._get_trend(offer)
+
+        # 3. Save to history
         self.storage.insert_price(offer)
 
-        # 3. Compare with Google's typical price range
+        # 4. Compare with Google's typical price range
         should_buy, discount_pct = self.should_recommend(offer)
 
         if offer.typical_price_low:
@@ -139,6 +334,8 @@ class FlightMonitor:
         else:
             print("[Monitor] Google no proporciono rango tipico para esta ruta")
 
+        self._print_trend(trend, offer.currency)
+
         # Return result for summary
         return FlightCheckResult(
             origin=flight.origin,
@@ -148,6 +345,7 @@ class FlightMonitor:
             offer=offer,
             discount_pct=discount_pct,
             recommended=should_buy,
+            trend=trend,
         )
 
     async def check_all_flights_async(self) -> list[FlightCheckResult]:

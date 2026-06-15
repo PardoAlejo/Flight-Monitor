@@ -18,6 +18,7 @@ class FlightConfig:
     return_date: Optional[str] = None
     adults: int = 1
     currency: str = "USD"
+    date_flexibility: int = 0  # Search ±N days around depart_date
 
 
 @dataclass
@@ -69,6 +70,7 @@ def load_flights_from_yaml(path: Path) -> list[FlightConfig]:
             return_date=flight_data.get("return_date"),
             adults=flight_data.get("adults", 1),
             currency=flight_data.get("currency", "USD"),
+            date_flexibility=flight_data.get("date_flexibility", 0),
         ))
 
     return flights

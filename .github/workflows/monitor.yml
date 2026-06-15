@@ -2,8 +2,10 @@ name: Flight Monitor
 
 on:
   schedule:
-    # Ejecutar a las 11:00 AM hora Colombia (UTC-5)
-    - cron: "0 16 * * *"
+    # 3x/dia: 8:00 AM, 2:00 PM, 8:00 PM hora Colombia (UTC-5)
+    - cron: "0 13 * * *"
+    - cron: "0 19 * * *"
+    - cron: "0 1 * * *"
   workflow_dispatch:
     # Permite ejecutar manualmente desde GitHub Actions
 
@@ -31,6 +33,12 @@ jobs:
 
       - name: Create flights.yaml from secret
         run: echo "${{ secrets.FLIGHTS_YAML }}" > flights.yaml
+
+      - name: Restore price history cache
+        uses: actions/cache@v4
+        with:
+          path: flight_prices.db
+          key: flight-prices-db
 
       - name: Run flight monitor
         env:

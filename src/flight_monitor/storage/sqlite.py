@@ -1,9 +1,21 @@
 """SQLite storage backend for price history."""
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Optional
 
 from ..notifiers.base import FlightOffer, PriceRecord
+
+
+@dataclass
+class PriceStats:
+    """Aggregated price statistics for a route."""
+    record_count: int
+    min_price: float
+    avg_price: float
+    previous_price: Optional[float]  # Price from the most recent prior check
+    previous_checked_at: Optional[str]
 
 
 class SQLiteStorage:
@@ -118,3 +130,47 @@ class SQLiteStorage:
             )
             for r in rows
         ]
+
+    def get_price_stats(
+        self, origin: str, destination: str, depart_date: str
+    ) -> Optional[PriceStats]:
+        """
+        Get aggregated price statistics for a route.
+
+        Returns None if no prior records exist.
+        """
+        with self._get_connection() as conn:
+            # Aggregate stats
+            row = conn.execute(
+                """
+                SELECT COUNT(*), MIN(price), AVG(price)
+                FROM prices
+                WHERE origin = ? AND destination = ? AND depart_date = ?
+                """,
+                (origin, destination, depart_date),
+            ).fetchone()
+
+            if row is None or row[0] == 0:
+                return None
+
+            count, min_price, avg_price = row
+
+            # Most recent prior record
+            prev = conn.execute(
+                """
+                SELECT price, checked_at
+                FROM prices
+                WHERE origin = ? AND destination = ? AND depart_date = ?
+                ORDER BY checked_at DESC
+                LIMIT 1
+                """,
+                (origin, destination, depart_date),
+            ).fetchone()
+
+        return PriceStats(
+            record_count=count,
+            min_price=min_price,
+            avg_price=avg_price,
+            previous_price=prev[0] if prev else None,
+            previous_checked_at=prev[1] if prev else None,
+        )

@@ -162,6 +162,38 @@ class TelegramNotifier(Notifier):
                     else:
                         lines.append(f"   📈 {abs(result.discount_pct):.0f}% sobre típico")
 
+                # Trend analysis
+                if result.trend and result.trend.record_count > 0:
+                    parts = []
+                    if result.trend.price_change is not None and result.trend.price_change != 0:
+                        if result.trend.price_change < 0:
+                            parts.append(
+                                f"↓{offer.currency} {abs(result.trend.price_change):,.0f}"
+                            )
+                        else:
+                            parts.append(
+                                f"↑{offer.currency} {result.trend.price_change:,.0f}"
+                            )
+                    if result.trend.vs_avg_pct is not None:
+                        if result.trend.vs_avg_pct < 0:
+                            parts.append(f"{abs(result.trend.vs_avg_pct):.0f}% bajo prom")
+                        else:
+                            parts.append(f"+{result.trend.vs_avg_pct:.0f}% sobre prom")
+                    if result.trend.is_all_time_low:
+                        parts.append("🏆 MÍNIMO")
+                    if parts:
+                        lines.append(f"   📊 {' • '.join(parts)}")
+
+                # Date alternatives
+                if result.date_alternatives:
+                    lines.append("   📅 *Por fecha:*")
+                    for alt in result.date_alternatives:
+                        date_fmt = format_date_spanish(alt.depart_date)
+                        marker = " ◀" if alt.is_cheapest else ""
+                        lines.append(
+                            f"   {date_fmt}: {alt.currency} {alt.price:,.0f}{marker}"
+                        )
+
                 # Recommendation
                 if result.recommended:
                     lines.append("   ✅ *COMPRAR AHORA*")

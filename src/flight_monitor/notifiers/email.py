@@ -214,6 +214,54 @@ class EmailNotifier(Notifier):
         rec_text = get_recommendation_text(result.recommended, offer.price_level)
         lines.append(f"  👉 {rec_text}")
 
+        # Trend analysis
+        if result.trend and result.trend.record_count > 0:
+            lines.append("  📊 TENDENCIA HISTORICA:")
+            if result.trend.price_change is not None and result.trend.price_change != 0:
+                if result.trend.price_change < 0:
+                    lines.append(
+                        f"  ↓ Bajo {offer.currency} {abs(result.trend.price_change):,.0f} "
+                        f"vs chequeo anterior ({abs(result.trend.price_change_pct or 0):.1f}%)"
+                    )
+                else:
+                    lines.append(
+                        f"  ↑ Subio {offer.currency} {result.trend.price_change:,.0f} "
+                        f"vs chequeo anterior (+{result.trend.price_change_pct or 0:.1f}%)"
+                    )
+            if result.trend.vs_avg_pct is not None and result.trend.historical_avg:
+                avg_fmt = f"{result.trend.historical_avg:,.0f}"
+                if result.trend.vs_avg_pct < 0:
+                    lines.append(
+                        f"  📉 {abs(result.trend.vs_avg_pct):.0f}% bajo promedio "
+                        f"historico ({offer.currency} {avg_fmt})"
+                    )
+                else:
+                    lines.append(
+                        f"  📈 {result.trend.vs_avg_pct:.0f}% sobre promedio "
+                        f"historico ({offer.currency} {avg_fmt})"
+                    )
+            if result.trend.is_all_time_low:
+                lines.append("  🏆 ¡MINIMO HISTORICO! Precio mas bajo registrado")
+            elif result.trend.historical_min:
+                lines.append(
+                    f"  🔻 Minimo historico: {offer.currency} {result.trend.historical_min:,.0f}"
+                )
+            lines.append(f"  📋 Basado en {result.trend.record_count} registros")
+            lines.append("")
+
+        # Date alternatives table
+        if result.date_alternatives:
+            lines.append("  📅 COMPARACION POR FECHA:")
+            lines.append("  " + "─" * 40)
+            for alt in result.date_alternatives:
+                date_fmt = format_date_spanish(alt.depart_date)
+                marker = " ◀ MEJOR" if alt.is_cheapest else ""
+                lines.append(
+                    f"    {date_fmt}  {alt.currency} {alt.price:,.0f}{marker}"
+                )
+            lines.append("  " + "─" * 40)
+            lines.append("")
+
         # Google Flights link
         gf_url = build_google_flights_url(
             result.origin,
