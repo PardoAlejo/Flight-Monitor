@@ -67,8 +67,8 @@ def load_flights_from_yaml(path: Path) -> list[FlightConfig]:
         flights.append(FlightConfig(
             origin=flight_data["origin"],
             destination=flight_data["destination"],
-            depart_date=flight_data["depart_date"],
-            return_date=flight_data.get("return_date"),
+            depart_date=str(flight_data["depart_date"]),
+            return_date=str(flight_data["return_date"]) if flight_data.get("return_date") else None,
             adults=flight_data.get("adults", 1),
             currency=flight_data.get("currency", "USD"),
             date_flexibility=flight_data.get("date_flexibility", 0),
