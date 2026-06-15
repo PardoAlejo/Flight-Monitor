@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
-    "requests>=2.31.0",
+    "requests>=2.34.2",
 ]
 
 [project.scripts]
@@ -22,8 +22,8 @@ packages = ["src/flight_monitor"]
 
 [dependency-groups]
 dev = [
-    "mypy>=1.0",
-    "ruff>=0.1",
+    "mypy>=2.1.0",
+    "ruff>=0.15.15",
     "types-PyYAML>=6.0.12",
     "types-requests>=2.31.0",
 ]
