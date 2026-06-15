@@ -155,7 +155,12 @@ class FlightMonitor:
         variants: list[FlightConfig] = []
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        for offset in range(-flight.date_flexibility, flight.date_flexibility + 1):
+        if flight.flexibility_direction == "forward":
+            start_offset = 0
+        else:
+            start_offset = -flight.date_flexibility
+
+        for offset in range(start_offset, flight.date_flexibility + 1):
             new_depart = base_depart + timedelta(days=offset)
             # Skip dates in the past
             if new_depart < today:

@@ -238,6 +238,20 @@ class DateFlexibilityTests(unittest.TestCase):
         for v in variants:
             self.assertEqual(v.date_flexibility, 0)
 
+    def test_expand_dates_forward_only(self) -> None:
+        flight = FlightConfig(
+            origin="BOG", destination="LHR",
+            depart_date="2027-06-10", return_date="2027-09-10",
+            date_flexibility=3, flexibility_direction="forward",
+        )
+        variants = FlightMonitor.expand_dates(flight)
+        # 4 variants: 0, +1, +2, +3
+        self.assertEqual(len(variants), 4)
+        self.assertEqual(variants[0].depart_date, "2027-06-10")
+        self.assertEqual(variants[0].return_date, "2027-09-10")
+        self.assertEqual(variants[3].depart_date, "2027-06-13")
+        self.assertEqual(variants[3].return_date, "2027-09-13")
+
     def test_expand_dates_one_way(self) -> None:
         flight = FlightConfig(
             origin="BOG", destination="MIA",
