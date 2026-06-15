@@ -19,8 +19,11 @@ class FlightOffer:
     return_date: Optional[str] = None
     adults: int = 1  # Number of passengers (for per-person price calculation)
     price_category: str = "other"  # "best" (LOW) or "other"
-    # Flight duration in minutes
+    # Flight timing
     total_duration: Optional[int] = None  # Total flight time in minutes
+    departure_time: Optional[str] = None  # First segment departure time
+    arrival_time: Optional[str] = None    # Last segment arrival time
+    layovers: list[str] = field(default_factory=list)  # e.g. ["2h 30m en MIA"]
     # Price insights from Google Flights
     typical_price_low: Optional[float] = None   # Lower bound of typical range
     typical_price_high: Optional[float] = None  # Upper bound of typical range

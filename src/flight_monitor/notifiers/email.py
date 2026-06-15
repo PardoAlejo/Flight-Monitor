@@ -187,8 +187,14 @@ class EmailNotifier(Notifier):
         # Flight details
         stops_text = "Directo" if offer.stops == 0 else f"{offer.stops} escala(s)"
         lines.append(f"  🛫 Aerolinea:  {offer.airline} ({stops_text})")
+        if offer.departure_time and offer.arrival_time:
+            lines.append(f"  🕐 Horario:    {offer.departure_time} → {offer.arrival_time}")
         if offer.duration_formatted:
             lines.append(f"  ⏱️  Vuelo:      {offer.duration_formatted}")
+        if offer.layovers:
+            lines.append(f"  🔄 Escalas:    {' → '.join(offer.layovers)}")
+        if offer.segments:
+            lines.append(f"  📍 Ruta:       {' | '.join(offer.segments)}")
         lines.append("")
 
         # Price analysis

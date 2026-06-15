@@ -6,6 +6,7 @@ from typing import Optional
 import requests
 
 from .base import FlightCheckResult, Notifier
+from .email import build_google_flights_url
 
 # Spanish day and month names
 DAYS_ES = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
@@ -149,12 +150,16 @@ class TelegramNotifier(Notifier):
                 else:
                     lines.append(f"   💰 {offer.currency} {offer.price:,.0f}")
 
-                # Airline and duration
+                # Airline, timing, and duration
                 stops = "directo" if offer.stops == 0 else f"{offer.stops} escala(s)"
                 if offer.duration_formatted:
                     lines.append(f"   🛫 {offer.airline} • {offer.duration_formatted} • {stops}")
                 else:
                     lines.append(f"   🛫 {offer.airline} ({stops})")
+                if offer.departure_time and offer.arrival_time:
+                    lines.append(f"   🕐 {offer.departure_time} → {offer.arrival_time}")
+                if offer.layovers:
+                    lines.append(f"   🔄 {' → '.join(offer.layovers)}")
 
                 # Price comparison
                 if offer.typical_price_low and offer.typical_price_high:
@@ -201,14 +206,21 @@ class TelegramNotifier(Notifier):
                 else:
                     lines.append("   ⏳ Esperar mejor precio")
 
+                # Google Flights link for this specific search
+                gf_url = build_google_flights_url(
+                    result.origin,
+                    result.destination,
+                    result.depart_date,
+                    result.return_date,
+                )
+                lines.append(f"   🔗 {gf_url}")
+
                 lines.append("")
 
         # Footer
         if any_recommended:
             lines.append("🔔 *¡Hay vuelos recomendados para comprar!*")
             lines.append("")
-
-        lines.append("🔍 google.com/flights")
 
         text = "\n".join(lines)
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"

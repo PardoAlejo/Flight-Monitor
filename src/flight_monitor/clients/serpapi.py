@@ -220,10 +220,35 @@ class SerpApiClient:
             for seg in flights_info:
                 departure = seg.get("departure_airport", {})
                 arrival = seg.get("arrival_airport", {})
-                dep_time = seg.get("departure_airport", {}).get("time", "")
+                dep_time = departure.get("time", "")
+                arr_time = arrival.get("time", "")
                 segments.append(
-                    f"{departure.get('id', '?')} -> {arrival.get('id', '?')} ({dep_time})"
+                    f"{departure.get('id', '?')} -> {arrival.get('id', '?')}"
+                    f" ({dep_time} -> {arr_time})"
                 )
+
+            # Departure and arrival times (overall journey)
+            departure_time = flights_info[0].get(
+                "departure_airport", {}
+            ).get("time")
+            arrival_time = flights_info[-1].get(
+                "arrival_airport", {}
+            ).get("time")
+
+            # Layover details
+            layover_list: list[str] = []
+            for layover in cheapest.get("layovers", []):
+                lay_duration = layover.get("duration", 0)
+                lay_id = layover.get("id", "?")
+                hours = lay_duration // 60
+                minutes = lay_duration % 60
+                if hours > 0 and minutes > 0:
+                    lay_fmt = f"{hours}h {minutes}m"
+                elif hours > 0:
+                    lay_fmt = f"{hours}h"
+                else:
+                    lay_fmt = f"{minutes}m"
+                layover_list.append(f"{lay_fmt} en {lay_id}")
 
             # Calculate stops
             stops = len(flights_info) - 1
@@ -260,6 +285,9 @@ class SerpApiClient:
                 adults=flight.adults,
                 price_category=price_category,
                 total_duration=int(total_duration) if total_duration else None,
+                departure_time=departure_time,
+                arrival_time=arrival_time,
+                layovers=layover_list,
                 typical_price_low=float(typical_low) if typical_low else None,
                 typical_price_high=float(typical_high) if typical_high else None,
                 price_level=price_level,
