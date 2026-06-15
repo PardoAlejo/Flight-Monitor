@@ -103,124 +103,157 @@ class TelegramNotifier(Notifier):
         any_recommended = any(r.recommended for r in results if r.succeeded)
 
         lines = [
-            "✈️ *RESUMEN DE VUELOS*",
-            f"📅 {today_formatted} • {time_str}",
-            "",
+            f"✈️ *VUELOS — {today_formatted} {time_str}*",
         ]
 
         if not results:
+            lines.append("")
             lines.append("No hubo vuelos para resumir.")
         else:
             for result in results:
                 route = f"{result.origin} → {result.destination}"
-                indicator = "⚠️"
 
-                if result.succeeded and result.offer:
-                    indicator = get_price_indicator(
-                        result.offer.price_level, result.recommended
-                    )
+                if not result.succeeded or result.offer is None:
+                    lines.append("")
+                    lines.append(f"⚠️ *{route}* — Error")
+                    error_detail = result.error_message or "No se pudo consultar"
+                    lines.append(error_detail)
+                    continue
 
+                offer = result.offer
+                indicator = get_price_indicator(
+                    offer.price_level, result.recommended
+                )
+
+                # ── Header ──
+                lines.append("")
                 lines.append(f"{indicator} *{route}*")
+                lines.append("─────────────────────")
 
-                # Dates
+                # ── Best flight details ──
+                # Route path: BOG → MIA → LHR
+                airport_ids: list[str] = []
+                for seg in offer.segments:
+                    parts = seg.split(" -> ")
+                    if parts and not airport_ids:
+                        airport_ids.append(parts[0].strip().split(" ")[0])
+                    if len(parts) > 1:
+                        arr_part = parts[1].strip().split(" ")[0]
+                        airport_ids.append(arr_part)
+                if airport_ids:
+                    route_path = " → ".join(airport_ids)
+                    lines.append(f"🛫 {offer.airline} | {route_path}")
+
+                # Timing
+                time_parts = []
+                if offer.departure_time and offer.arrival_time:
+                    time_parts.append(f"{offer.departure_time} → {offer.arrival_time}")
+                if offer.duration_formatted:
+                    time_parts.append(offer.duration_formatted)
+                if time_parts:
+                    lines.append(f"🕐 {' | '.join(time_parts)}")
+
+                # Layovers
+                if offer.layovers:
+                    lines.append(f"🔄 Escalas: {', '.join(offer.layovers)}")
+
+                lines.append("")
+
+                # ── Price ──
+                if offer.adults > 1:
+                    lines.append(
+                        f"💰 *{offer.currency} {offer.price:,.0f}* total"
+                        f" ({offer.currency} {offer.price_per_person:,.0f}/persona)"
+                    )
+                else:
+                    lines.append(f"💰 *{offer.currency} {offer.price:,.0f}*")
+
+                # vs typical
+                if offer.typical_price_low and offer.typical_price_high:
+                    low = f"{offer.typical_price_low:,.0f}"
+                    high = f"{offer.typical_price_high:,.0f}"
+                    if result.discount_pct > 0:
+                        lines.append(
+                            f"📉 {result.discount_pct:.0f}% bajo típico"
+                            f" ({offer.currency} {low}–{high})"
+                        )
+                    else:
+                        lines.append(
+                            f"📈 {abs(result.discount_pct):.0f}% sobre típico"
+                            f" ({offer.currency} {low}–{high})"
+                        )
+
+                # Trend
+                if result.trend and result.trend.record_count > 0:
+                    trend_parts = []
+                    if (
+                        result.trend.price_change is not None
+                        and result.trend.price_change != 0
+                    ):
+                        if result.trend.price_change < 0:
+                            trend_parts.append(
+                                f"↓ {offer.currency}"
+                                f" {abs(result.trend.price_change):,.0f}"
+                            )
+                        else:
+                            trend_parts.append(
+                                f"↑ {offer.currency}"
+                                f" {result.trend.price_change:,.0f}"
+                            )
+                    if result.trend.is_all_time_low:
+                        trend_parts.append("🏆 MÍNIMO HISTÓRICO")
+                    if trend_parts:
+                        lines.append(f"📊 {' | '.join(trend_parts)}")
+
+                lines.append("")
+
+                # ── Dates ──
                 depart_fmt = format_date_spanish(result.depart_date)
                 if result.return_date:
                     return_fmt = format_date_spanish(result.return_date)
                     duration = calculate_trip_duration(
                         result.depart_date, result.return_date
                     )
-                    lines.append(f"   🗓 {depart_fmt} → {return_fmt} ({duration}d)")
+                    lines.append(f"📅 {depart_fmt} → {return_fmt} ({duration}d)")
                 else:
-                    lines.append(f"   🗓 {depart_fmt} (solo ida)")
+                    lines.append(f"📅 {depart_fmt} (solo ida)")
 
-                if not result.succeeded or result.offer is None:
-                    error_detail = result.error_message or "Error al consultar"
-                    lines.append(f"   ❌ {error_detail}")
-                    lines.append("")
-                    continue
-
-                offer = result.offer
-
-                # Price
-                if offer.adults > 1:
-                    lines.append(f"   💰 {offer.currency} {offer.price:,.0f} total")
-                    lines.append(
-                        f"   👤 {offer.currency} {offer.price_per_person:,.0f}/persona"
-                    )
-                else:
-                    lines.append(f"   💰 {offer.currency} {offer.price:,.0f}")
-
-                # Airline, timing, and duration
-                stops = "directo" if offer.stops == 0 else f"{offer.stops} escala(s)"
-                if offer.duration_formatted:
-                    lines.append(f"   🛫 {offer.airline} • {offer.duration_formatted} • {stops}")
-                else:
-                    lines.append(f"   🛫 {offer.airline} ({stops})")
-                if offer.departure_time and offer.arrival_time:
-                    lines.append(f"   🕐 {offer.departure_time} → {offer.arrival_time}")
-                if offer.layovers:
-                    lines.append(f"   🔄 {' → '.join(offer.layovers)}")
-
-                # Price comparison
-                if offer.typical_price_low and offer.typical_price_high:
-                    if result.discount_pct > 0:
-                        lines.append(f"   📉 {result.discount_pct:.0f}% bajo típico 🎉")
-                    else:
-                        lines.append(f"   📈 {abs(result.discount_pct):.0f}% sobre típico")
-
-                # Trend analysis
-                if result.trend and result.trend.record_count > 0:
-                    parts = []
-                    if result.trend.price_change is not None and result.trend.price_change != 0:
-                        if result.trend.price_change < 0:
-                            parts.append(
-                                f"↓{offer.currency} {abs(result.trend.price_change):,.0f}"
-                            )
-                        else:
-                            parts.append(
-                                f"↑{offer.currency} {result.trend.price_change:,.0f}"
-                            )
-                    if result.trend.vs_avg_pct is not None:
-                        if result.trend.vs_avg_pct < 0:
-                            parts.append(f"{abs(result.trend.vs_avg_pct):.0f}% bajo prom")
-                        else:
-                            parts.append(f"+{result.trend.vs_avg_pct:.0f}% sobre prom")
-                    if result.trend.is_all_time_low:
-                        parts.append("🏆 MÍNIMO")
-                    if parts:
-                        lines.append(f"   📊 {' • '.join(parts)}")
-
-                # Date alternatives
+                # Date alternatives table
                 if result.date_alternatives:
-                    lines.append("   📅 *Por fecha:*")
+                    lines.append("")
+                    lines.append("*Precios por fecha:*")
                     for alt in result.date_alternatives:
                         date_fmt = format_date_spanish(alt.depart_date)
-                        marker = " ◀" if alt.is_cheapest else ""
-                        lines.append(
-                            f"   {date_fmt}: {alt.currency} {alt.price:,.0f}{marker}"
-                        )
+                        if alt.is_cheapest:
+                            lines.append(
+                                f"  ▸ {date_fmt}  *{alt.currency} {alt.price:,.0f}* ◀"
+                            )
+                        else:
+                            lines.append(
+                                f"    {date_fmt}  {alt.currency} {alt.price:,.0f}"
+                            )
 
-                # Recommendation
+                lines.append("")
+
+                # ── Recommendation + Link ──
                 if result.recommended:
-                    lines.append("   ✅ *COMPRAR AHORA*")
+                    lines.append("✅ *COMPRAR AHORA*")
                 else:
-                    lines.append("   ⏳ Esperar mejor precio")
+                    lines.append("⏳ Esperar mejor precio")
 
-                # Google Flights link for this specific search
                 gf_url = build_google_flights_url(
                     result.origin,
                     result.destination,
                     result.depart_date,
                     result.return_date,
                 )
-                lines.append(f"   🔗 {gf_url}")
-
-                lines.append("")
+                lines.append(f"🔗 [Ver en Google Flights]({gf_url})")
 
         # Footer
         if any_recommended:
-            lines.append("🔔 *¡Hay vuelos recomendados para comprar!*")
             lines.append("")
+            lines.append("─────────────────────")
+            lines.append("🔔 *¡Hay vuelos recomendados!*")
 
         text = "\n".join(lines)
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
